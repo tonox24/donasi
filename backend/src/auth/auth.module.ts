@@ -19,17 +19,12 @@ import { JwtStrategy } from './jwt.strategy';
       useFactory: (
         configService: ConfigService,
       ) => {
-        const jwtExpiresIn = (
-          configService.get<string>('JWT_EXPIRES_IN') ?? '7d'
-        )
-          .trim()
-          .replace(/^["']|["']$/g, '');
-
         return {
-          secret: configService.getOrThrow<string>('JWT_SECRET'),
+          secret: configService.getOrThrow<string>(
+            'JWT_SECRET',
+          ),
           signOptions: {
-  expiresIn: 604800,
-},
+            expiresIn: 604800,
           },
         };
       },
