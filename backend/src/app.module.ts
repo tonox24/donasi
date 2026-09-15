@@ -5,6 +5,7 @@ import { AuthModule } from './auth/auth.module';
 import { PrismaModule } from './prisma.module';
 import { RbacModule } from './rbac/rbac.module';
 import { RbacTestModule } from './rbac-test/rbac-test.module';
+import { ProgramModule } from './program/program.module';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { RbacTestModule } from './rbac-test/rbac-test.module';
   RbacModule,
   AuthModule,
   RbacTestModule,
+  ProgramModule,
 ],
   controllers: [HealthController],
 })
