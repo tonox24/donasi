@@ -25,6 +25,27 @@ enum RoleName {
   STAFF
 }
 
+enum ProgramStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum CampaignStatus {
+  DRAFT
+  PENDING_REVIEW
+  PUBLISHED
+  PAUSED
+  COMPLETED
+  CANCELLED
+}
+
+enum BeneficiaryType {
+  INDIVIDUAL
+  FAMILY
+  COMMUNITY
+  INSTITUTION
+}
+
 model User {
   id           String     @id @default(uuid())
   email        String     @unique
@@ -39,6 +60,11 @@ model User {
   roles         UserRole[]
   auditLogs     AuditLog[]
   refreshTokens RefreshToken[]
+
+  programs           Program[]
+  campaigns          Campaign[]
+  campaignUpdates    CampaignUpdate[]
+  beneficiaries      Beneficiary[]
 
   @@index([email])
   @@index([phone])
@@ -124,4 +150,193 @@ model AuditLog {
   @@index([entity, entityId])
   @@index([createdAt])
   @@index([action])
+}
+
+/*
+|--------------------------------------------------------------------------
+| PROGRAM
+|--------------------------------------------------------------------------
+*/
+
+model Program {
+  id          String        @id @default(uuid())
+  name        String
+  slug        String        @unique
+  description String?
+  status      ProgramStatus @default(ACTIVE)
+
+  createdById String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  createdBy User @relation(fields: [createdById], references: [id], onDelete: Restrict)
+
+  campaigns Campaign[]
+
+  @@index([status])
+  @@index([createdById])
+}
+
+/*
+|--------------------------------------------------------------------------
+| CAMPAIGN CATEGORY
+|--------------------------------------------------------------------------
+*/
+
+model CampaignCategory {
+  id          String  @id @default(uuid())
+  name        String
+  slug        String  @unique
+  description String?
+  isActive    Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  campaigns Campaign[]
+
+  @@index([isActive])
+}
+
+/*
+|--------------------------------------------------------------------------
+| BENEFICIARY
+|--------------------------------------------------------------------------
+*/
+
+model Beneficiary {
+  id          String          @id @default(uuid())
+  name        String
+  type        BeneficiaryType
+  description String?
+  location    String?
+  isActive    Boolean         @default(true)
+
+  createdById String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  createdBy User @relation(fields: [createdById], references: [id], onDelete: Restrict)
+
+  campaigns CampaignBeneficiary[]
+
+  @@index([type])
+  @@index([isActive])
+  @@index([createdById])
+}
+
+/*
+|--------------------------------------------------------------------------
+| CAMPAIGN
+|--------------------------------------------------------------------------
+*/
+
+model Campaign {
+  id          String         @id @default(uuid())
+  title       String
+  slug        String         @unique
+  shortDescription String?
+  description String?
+
+  targetAmount    Decimal @db.Decimal(18, 2)
+  collectedAmount Decimal @default(0) @db.Decimal(18, 2)
+
+  currency String @default("IDR")
+
+  startDate DateTime?
+  endDate   DateTime?
+
+  status CampaignStatus @default(DRAFT)
+
+  programId  String
+  categoryId String
+  createdById String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  publishedAt DateTime?
+
+  program  Program          @relation(fields: [programId], references: [id], onDelete: Restrict)
+  category CampaignCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  createdBy User            @relation(fields: [createdById], references: [id], onDelete: Restrict)
+
+  images        CampaignImage[]
+  updates       CampaignUpdate[]
+  beneficiaries CampaignBeneficiary[]
+
+  @@index([status])
+  @@index([programId])
+  @@index([categoryId])
+  @@index([createdById])
+  @@index([startDate])
+  @@index([endDate])
+}
+
+/*
+|--------------------------------------------------------------------------
+| CAMPAIGN IMAGE
+|--------------------------------------------------------------------------
+*/
+
+model CampaignImage {
+  id         String  @id @default(uuid())
+  campaignId String
+
+  imageUrl   String
+  caption    String?
+  sortOrder  Int     @default(0)
+  isPrimary  Boolean @default(false)
+
+  createdAt DateTime @default(now())
+
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@index([campaignId])
+  @@index([sortOrder])
+}
+
+/*
+|--------------------------------------------------------------------------
+| CAMPAIGN UPDATE
+|--------------------------------------------------------------------------
+*/
+
+model CampaignUpdate {
+  id         String @id @default(uuid())
+  campaignId String
+  createdById String
+
+  title   String
+  content String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  createdBy User     @relation(fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([campaignId])
+  @@index([createdById])
+  @@index([createdAt])
+}
+
+/*
+|--------------------------------------------------------------------------
+| CAMPAIGN BENEFICIARY
+|--------------------------------------------------------------------------
+*/
+
+model CampaignBeneficiary {
+  campaignId    String
+  beneficiaryId String
+
+  createdAt DateTime @default(now())
+
+  campaign    Campaign    @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  beneficiary Beneficiary @relation(fields: [beneficiaryId], references: [id], onDelete: Cascade)
+
+  @@id([campaignId, beneficiaryId])
+  @@index([beneficiaryId])
 }
