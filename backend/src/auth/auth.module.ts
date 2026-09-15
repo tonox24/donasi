@@ -18,15 +18,20 @@ import { JwtStrategy } from './jwt.strategy';
       inject: [ConfigService],
       useFactory: (
         configService: ConfigService,
-      ) => ({
-        secret: configService.get<string>('JWT_SECRET'),
-        signOptions: {
-          expiresIn: configService.get<string>(
-            'JWT_EXPIRES_IN',
-            '7d',
-          ) as any,
-        },
-      }),
+      ) => {
+        const jwtExpiresIn = (
+          configService.get<string>('JWT_EXPIRES_IN') ?? '7d'
+        )
+          .trim()
+          .replace(/^["']|["']$/g, '');
+
+        return {
+          secret: configService.getOrThrow<string>('JWT_SECRET'),
+          signOptions: {
+            expiresIn: jwtExpiresIn as any,
+          },
+        };
+      },
     }),
   ],
   controllers: [AuthController],
