@@ -87,16 +87,14 @@ export class AuthService {
     });
 
     const refreshToken = await this.jwtService.signAsync(
-      {
-        sub: authUser.id,
-        tokenType: 'refresh',
-      },
-      {
-        {
-  expiresIn: 2592000,
-},
-      },
-    );
+  {
+    sub: authUser.id,
+    tokenType: 'refresh',
+  },
+  {
+    expiresIn: 2592000,
+  },
+);
 
     const refreshPayload = this.jwtService.decode(refreshToken) as {
       exp: number;
