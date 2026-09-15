@@ -1,0 +1,80 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+enum RoleName {
+  SUPER_ADMIN
+  ADMIN
+  FINANCE
+  FUNDRAISING
+  PROGRAM
+  DONOR
+  SELLER
+  PARTNER
+}
+
+model User {
+  id           String     @id @default(uuid())
+  email        String     @unique
+  phone        String?
+  passwordHash String
+  fullName     String
+  status       UserStatus @default(ACTIVE)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  roles        UserRole[]
+  auditLogs    AuditLog[]
+
+  @@index([email])
+  @@index([phone])
+}
+
+model Role {
+  id          String     @id @default(uuid())
+  name        RoleName   @unique
+  description String?
+  createdAt   DateTime   @default(now())
+
+  users       UserRole[]
+}
+
+model UserRole {
+  userId String
+  roleId String
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@index([roleId])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  userId     String?
+  action     String
+  entity     String
+  entityId   String?
+  ipAddress  String?
+  userAgent  String?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([entity, entityId])
+  @@index([createdAt])
+}
