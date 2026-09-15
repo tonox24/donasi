@@ -169,9 +169,9 @@ export class ProgramService {
         entity: 'Program',
         entityId: program.id,
         userId,
-        metadata: {
-          changes: dto,
-        },
+       metadata: {
+  changes: { ...dto },
+},
       },
     });
 
