@@ -32,6 +32,24 @@ export class AuthService {
     return createHash('sha256').update(token).digest('hex');
   }
 
+  private async writeAuditLog(
+    action: string,
+    entity: string,
+    entityId?: string,
+    userId?: string,
+    metadata?: Record<string, unknown>,
+  ) {
+    await this.prisma.auditLog.create({
+      data: {
+        action,
+        entity,
+        entityId: entityId ?? null,
+        userId: userId ?? null,
+        metadata: metadata ?? undefined,
+      },
+    });
+  }
+
   private async getUserForAuth(userId: string) {
     return this.prisma.user.findUnique({
       where: {
@@ -87,14 +105,14 @@ export class AuthService {
     });
 
     const refreshToken = await this.jwtService.signAsync(
-  {
-    sub: authUser.id,
-    tokenType: 'refresh',
-  },
-  {
-    expiresIn: 2592000,
-  },
-);
+      {
+        sub: authUser.id,
+        tokenType: 'refresh',
+      },
+      {
+        expiresIn: 2592000,
+      },
+    );
 
     const refreshPayload = this.jwtService.decode(refreshToken) as {
       exp: number;
@@ -125,6 +143,16 @@ export class AuthService {
     });
 
     if (existingUser) {
+      await this.writeAuditLog(
+        'AUTH_REGISTER_FAILED',
+        'User',
+        existingUser.id,
+        existingUser.id,
+        {
+          reason: 'EMAIL_ALREADY_EXISTS',
+        },
+      );
+
       throw new ConflictException(
         'An account with this email already exists',
       );
@@ -173,6 +201,16 @@ export class AuthService {
       },
     });
 
+    await this.writeAuditLog(
+      'AUTH_REGISTER',
+      'User',
+      user.id,
+      user.id,
+      {
+        role: 'DONOR',
+      },
+    );
+
     return this.issueTokens(user);
   }
 
@@ -201,12 +239,32 @@ export class AuthService {
     });
 
     if (!user) {
+      await this.writeAuditLog(
+        'AUTH_LOGIN_FAILED',
+        'User',
+        undefined,
+        undefined,
+        {
+          reason: 'USER_NOT_FOUND',
+        },
+      );
+
       throw new UnauthorizedException(
         'Invalid email or password',
       );
     }
 
     if (user.status !== 'ACTIVE') {
+      await this.writeAuditLog(
+        'AUTH_LOGIN_FAILED',
+        'User',
+        user.id,
+        user.id,
+        {
+          reason: 'USER_NOT_ACTIVE',
+        },
+      );
+
       throw new UnauthorizedException(
         'User account is not active',
       );
@@ -218,12 +276,34 @@ export class AuthService {
     );
 
     if (!validPassword) {
+      await this.writeAuditLog(
+        'AUTH_LOGIN_FAILED',
+        'User',
+        user.id,
+        user.id,
+        {
+          reason: 'INVALID_PASSWORD',
+        },
+      );
+
       throw new UnauthorizedException(
         'Invalid email or password',
       );
     }
 
-    return this.issueTokens(user);
+    const tokens = await this.issueTokens(user);
+
+    await this.writeAuditLog(
+      'AUTH_LOGIN',
+      'User',
+      user.id,
+      user.id,
+      {
+        roles: tokens.user.roles,
+      },
+    );
+
+    return tokens;
   }
 
   async refresh(refreshToken: string) {
@@ -285,7 +365,16 @@ export class AuthService {
       },
     });
 
-    return this.issueTokens(user);
+    const tokens = await this.issueTokens(user);
+
+    await this.writeAuditLog(
+      'AUTH_REFRESH',
+      'User',
+      user.id,
+      user.id,
+    );
+
+    return tokens;
   }
 
   async logout(userId: string, refreshToken?: string) {
@@ -314,6 +403,16 @@ export class AuthService {
         },
       });
     }
+
+    await this.writeAuditLog(
+      'AUTH_LOGOUT',
+      'User',
+      userId,
+      userId,
+      {
+        refreshTokenRevoked: Boolean(refreshToken),
+      },
+    );
 
     return {
       message: 'Logged out successfully',
