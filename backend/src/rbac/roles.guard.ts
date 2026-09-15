@@ -8,7 +8,9 @@ import { Reflector } from '@nestjs/core';
 import { ROLES_KEY } from './roles.decorator';
 
 @Injectable()
-export class RolesGuard implements CanActivate {
+export class RolesGuard
+  implements CanActivate
+{
   constructor(
     private readonly reflector: Reflector,
   ) {}
@@ -25,6 +27,9 @@ export class RolesGuard implements CanActivate {
         ],
       );
 
+    /**
+     * Endpoint does not require role.
+     */
     if (
       !requiredRoles ||
       requiredRoles.length === 0
@@ -46,9 +51,15 @@ export class RolesGuard implements CanActivate {
     const userRoles: string[] =
       user.roles ?? [];
 
-    const hasRole = requiredRoles.some(
-      (role) => userRoles.includes(role),
-    );
+    /**
+     * User only needs ONE of the
+     * required roles.
+     */
+    const hasRole =
+      requiredRoles.some(
+        (role) =>
+          userRoles.includes(role),
+      );
 
     if (!hasRole) {
       throw new ForbiddenException(
