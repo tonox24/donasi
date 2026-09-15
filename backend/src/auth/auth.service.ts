@@ -6,6 +6,7 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { createHash } from 'crypto';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
@@ -32,23 +33,25 @@ export class AuthService {
     return createHash('sha256').update(token).digest('hex');
   }
 
-  private async writeAuditLog(
-    action: string,
-    entity: string,
-    entityId?: string,
-    userId?: string,
-    metadata?: Record<string, unknown>,
-  ) {
-    await this.prisma.auditLog.create({
-      data: {
-        action,
-        entity,
-        entityId: entityId ?? null,
-        userId: userId ?? null,
-        metadata: metadata ?? undefined,
-      },
-    });
-  }
+private async writeAuditLog(
+  action: string,
+  entity: string,
+  entityId?: string,
+  userId?: string,
+  metadata?: Record<string, unknown>,
+) {
+  await this.prisma.auditLog.create({
+    data: {
+      action,
+      entity,
+      entityId: entityId ?? null,
+      userId: userId ?? null,
+      metadata: metadata
+        ? (metadata as Prisma.InputJsonValue)
+        : undefined,
+    },
+  });
+}
 
   private async getUserForAuth(userId: string) {
     return this.prisma.user.findUnique({
