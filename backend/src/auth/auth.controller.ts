@@ -54,7 +54,9 @@ export class AuthController {
 
   @UseGuards(JwtAuthGuard)
   @Get('me')
-  me(@CurrentUser() user: { id: string }) {
+  me(
+    @CurrentUser() user: { id: string },
+  ) {
     return this.authService.me(user.id);
   }
 
@@ -75,7 +77,8 @@ export class AuthController {
   private getRequestContext(request: any) {
     return {
       ipAddress: request.ip,
-      userAgent: request.headers?.['user-agent'],
+      userAgent:
+        request.headers?.['user-agent'],
     };
   }
 }
