@@ -9,12 +9,12 @@ export class CreateProgramDto {
   @IsString()
   @IsNotEmpty()
   @MinLength(3)
-  name: string;
+  name!: string;
 
   @IsString()
   @IsNotEmpty()
   @MinLength(3)
-  slug: string;
+  slug!: string;
 
   @IsOptional()
   @IsString()
