@@ -92,7 +92,9 @@ export class AuthService {
         tokenType: 'refresh',
       },
       {
-        expiresIn: '30d' as any,
+        {
+  expiresIn: 2592000,
+},
       },
     );
 
