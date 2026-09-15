@@ -8,7 +8,9 @@ import { Reflector } from '@nestjs/core';
 import { PERMISSIONS_KEY } from './permissions.decorator';
 
 @Injectable()
-export class PermissionsGuard implements CanActivate {
+export class PermissionsGuard
+  implements CanActivate
+{
   constructor(
     private readonly reflector: Reflector,
   ) {}
@@ -25,6 +27,9 @@ export class PermissionsGuard implements CanActivate {
         ],
       );
 
+    /**
+     * Endpoint does not require permission.
+     */
     if (
       !requiredPermissions ||
       requiredPermissions.length === 0
@@ -37,6 +42,10 @@ export class PermissionsGuard implements CanActivate {
 
     const user = request.user;
 
+    /**
+     * JwtAuthGuard should normally
+     * handle this case first.
+     */
     if (!user) {
       throw new ForbiddenException(
         'Authentication is required',
@@ -46,10 +55,15 @@ export class PermissionsGuard implements CanActivate {
     const userPermissions: string[] =
       user.permissions ?? [];
 
+    /**
+     * User must have ALL required permissions.
+     */
     const hasAllPermissions =
       requiredPermissions.every(
         (permission) =>
-          userPermissions.includes(permission),
+          userPermissions.includes(
+            permission,
+          ),
       );
 
     if (!hasAllPermissions) {
