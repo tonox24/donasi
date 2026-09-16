@@ -20,3 +20,4 @@ Digital Philanthropy + Social Impact Ecosystem.
 - Product Purchase + Donation
 - Finance
 - Reporting
+- Impact Donation
