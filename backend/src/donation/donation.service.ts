@@ -176,7 +176,7 @@ export class DonationService {
                   },
                 },
 
-                donor: {
+                donorProfile: {
                   select: {
                     id: true,
                     fullName: true,
@@ -377,7 +377,7 @@ export class DonationService {
           },
         },
 
-        donor: {
+        donorProfile: {
           select: {
             id: true,
             fullName: true,
@@ -425,7 +425,7 @@ export class DonationService {
             },
           },
 
-          donor: {
+          donorProfile: {
             select: {
               id: true,
               fullName: true,
@@ -474,7 +474,7 @@ export class DonationService {
       },
 
       include: {
-        donor: {
+        donorProfile: {
           select: {
             id: true,
             fullName: true,
