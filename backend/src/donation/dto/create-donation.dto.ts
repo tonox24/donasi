@@ -12,15 +12,15 @@ import {
 export class CreateDonationDto {
   @IsUUID()
   @IsNotEmpty()
-  campaignId: string;
+  campaignId!: string;
 
   @IsNumber()
   @Min(20000)
-  amount: number;
+  amount!: number;
 
   @IsString()
   @IsNotEmpty()
-  donorName: string;
+  donorName!: string;
 
   @IsOptional()
   @IsEmail()
