@@ -387,7 +387,7 @@ export class DonationService {
           },
         },
 
-        paymentTransactions: {
+        payment: {
           orderBy: {
             createdAt: 'desc',
           },
@@ -435,7 +435,7 @@ export class DonationService {
             },
           },
 
-          paymentTransactions: {
+          payment: {
             orderBy: {
               createdAt: 'desc',
             },
@@ -484,7 +484,7 @@ export class DonationService {
           },
         },
 
-        paymentTransactions: {
+        payment: {
           orderBy: {
             createdAt: 'desc',
           },
@@ -525,7 +525,7 @@ export class DonationService {
           },
         },
 
-        paymentTransactions: {
+        payment: {
           orderBy: {
             createdAt: 'desc',
           },
