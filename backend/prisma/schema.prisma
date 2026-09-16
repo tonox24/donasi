@@ -46,6 +46,25 @@ enum BeneficiaryType {
   INSTITUTION
 }
 
+enum DonationStatus {
+  PENDING
+  PAID
+  FAILED
+  EXPIRED
+  CANCELLED
+  REFUNDED
+}
+
+enum PaymentStatus {
+  INITIATED
+  PENDING
+  PAID
+  FAILED
+  EXPIRED
+  CANCELLED
+  REFUNDED
+}
+
 model User {
   id           String     @id @default(uuid())
   email        String     @unique
@@ -61,10 +80,11 @@ model User {
   auditLogs     AuditLog[]
   refreshTokens RefreshToken[]
 
-  programs           Program[]
-  campaigns          Campaign[]
-  campaignUpdates    CampaignUpdate[]
-  beneficiaries      Beneficiary[]
+  programs        Program[]
+  campaigns       Campaign[]
+  campaignUpdates CampaignUpdate[]
+  beneficiaries   Beneficiary[]
+  donorProfile    DonorProfile?
 
   @@index([email])
   @@index([phone])
@@ -234,11 +254,11 @@ model Beneficiary {
 */
 
 model Campaign {
-  id          String         @id @default(uuid())
-  title       String
-  slug        String         @unique
+  id               String         @id @default(uuid())
+  title            String
+  slug             String         @unique
   shortDescription String?
-  description String?
+  description      String?
 
   targetAmount    Decimal @db.Decimal(18, 2)
   collectedAmount Decimal @default(0) @db.Decimal(18, 2)
@@ -254,17 +274,19 @@ model Campaign {
   categoryId String
   createdById String
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
   publishedAt DateTime?
 
-  program  Program          @relation(fields: [programId], references: [id], onDelete: Restrict)
-  category CampaignCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
-  createdBy User            @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  program   Program          @relation(fields: [programId], references: [id], onDelete: Restrict)
+  category  CampaignCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  createdBy User             @relation(fields: [createdById], references: [id], onDelete: Restrict)
 
   images        CampaignImage[]
   updates       CampaignUpdate[]
   beneficiaries CampaignBeneficiary[]
+  donations     Donation[]
+  impacts       CampaignImpact[]
 
   @@index([status])
   @@index([programId])
@@ -284,10 +306,10 @@ model CampaignImage {
   id         String  @id @default(uuid())
   campaignId String
 
-  imageUrl   String
-  caption    String?
-  sortOrder  Int     @default(0)
-  isPrimary  Boolean @default(false)
+  imageUrl  String
+  caption   String?
+  sortOrder Int     @default(0)
+  isPrimary Boolean @default(false)
 
   createdAt DateTime @default(now())
 
@@ -314,7 +336,7 @@ model CampaignUpdate {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  campaign  Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   createdBy User     @relation(fields: [createdById], references: [id], onDelete: Restrict)
 
   @@index([campaignId])
@@ -339,4 +361,164 @@ model CampaignBeneficiary {
 
   @@id([campaignId, beneficiaryId])
   @@index([beneficiaryId])
+}
+
+/*
+|--------------------------------------------------------------------------
+| DONOR PROFILE
+|--------------------------------------------------------------------------
+*/
+
+model DonorProfile {
+  id     String  @id @default(uuid())
+  userId String? @unique
+
+  fullName String
+  email    String?
+  phone    String?
+  address  String?
+  city     String?
+  country  String?
+
+  isAnonymous Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user      User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
+  donations Donation[]
+
+  @@index([email])
+  @@index([phone])
+}
+
+/*
+|--------------------------------------------------------------------------
+| DONATION
+|--------------------------------------------------------------------------
+*/
+
+model Donation {
+  id         String  @id @default(uuid())
+  donorId    String?
+  campaignId String
+
+  amount   Decimal @db.Decimal(18, 2)
+  currency String  @default("IDR")
+
+  donorName  String
+  donorEmail String?
+  donorPhone String?
+  message    String?
+
+  isAnonymous Boolean        @default(false)
+  status      DonationStatus @default(PENDING)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  paidAt    DateTime?
+
+  donorProfile DonorProfile? @relation(fields: [donorId], references: [id], onDelete: SetNull)
+  campaign     Campaign      @relation(fields: [campaignId], references: [id], onDelete: Restrict)
+
+  payments PaymentTransaction[]
+  impacts  DonationImpact[]
+
+  @@index([donorId])
+  @@index([campaignId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([donorEmail])
+  @@index([donorPhone])
+}
+
+/*
+|--------------------------------------------------------------------------
+| PAYMENT TRANSACTION
+|--------------------------------------------------------------------------
+*/
+
+model PaymentTransaction {
+  id         String @id @default(uuid())
+  donationId String
+
+  transactionReference String @unique
+  provider             String
+  paymentMethod        String
+
+  amount   Decimal @db.Decimal(18, 2)
+  currency String  @default("IDR")
+
+  status PaymentStatus @default(INITIATED)
+
+  providerTransactionId String?
+  paidAt                DateTime?
+  expiredAt             DateTime?
+  rawResponse           Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  donation Donation @relation(fields: [donationId], references: [id], onDelete: Restrict)
+
+  @@index([donationId])
+  @@index([provider])
+  @@index([status])
+  @@index([providerTransactionId])
+  @@index([createdAt])
+}
+
+/*
+|--------------------------------------------------------------------------
+| CAMPAIGN IMPACT
+|--------------------------------------------------------------------------
+*/
+
+model CampaignImpact {
+  id         String @id @default(uuid())
+  campaignId String
+
+  name          String
+  description   String?
+  unit          String
+  amountPerUnit Decimal @db.Decimal(18, 2)
+
+  targetQuantity Decimal?
+  displayOrder   Int     @default(0)
+  isActive       Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  campaign Campaign         @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  donations DonationImpact[]
+
+  @@index([campaignId])
+  @@index([campaignId, isActive])
+  @@index([displayOrder])
+}
+
+/*
+|--------------------------------------------------------------------------
+| DONATION IMPACT
+|--------------------------------------------------------------------------
+*/
+
+model DonationImpact {
+  id               String @id @default(uuid())
+  donationId       String
+  campaignImpactId String
+
+  quantity        Decimal @db.Decimal(18, 2)
+  amountAllocated Decimal @db.Decimal(18, 2)
+  description     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  donation       Donation       @relation(fields: [donationId], references: [id], onDelete: Cascade)
+  campaignImpact CampaignImpact @relation(fields: [campaignImpactId], references: [id], onDelete: Restrict)
+
+  @@index([donationId])
+  @@index([campaignImpactId])
 }
