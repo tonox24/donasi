@@ -86,39 +86,55 @@ export class ProgramService {
   // FIND ONE
   // =========================================================
   async findOne(id: string) {
-    const programId = id.trim();
+  const programId = String(id).trim();
 
-    const program =
-      await this.prisma.program.findFirst({
-        where: {
-          id: programId,
-        },
-        include: {
-          campaigns: {
-            orderBy: {
-              createdAt: 'desc',
-            },
-            select: {
-              id: true,
-              title: true,
-              slug: true,
-              status: true,
-              targetAmount: true,
-              collectedAmount: true,
-              currency: true,
-            },
+  console.log(
+    '[PROGRAM FIND ONE] Requested ID:',
+    JSON.stringify(programId),
+  );
+
+  const program =
+    await this.prisma.program.findUnique({
+      where: {
+        id: programId,
+      },
+      include: {
+        campaigns: {
+          orderBy: {
+            createdAt: 'desc',
+          },
+          select: {
+            id: true,
+            title: true,
+            slug: true,
+            status: true,
+            targetAmount: true,
+            collectedAmount: true,
+            currency: true,
           },
         },
-      });
+      },
+    });
 
-    if (!program) {
-      throw new NotFoundException(
-        'Program not found',
-      );
-    }
+  console.log(
+    '[PROGRAM FIND ONE] Result:',
+    program
+      ? {
+          id: program.id,
+          name: program.name,
+          slug: program.slug,
+        }
+      : null,
+  );
 
-    return program;
+  if (!program) {
+    throw new NotFoundException(
+      'Program not found',
+    );
   }
+
+  return program;
+}
 
   // =========================================================
   // UPDATE
