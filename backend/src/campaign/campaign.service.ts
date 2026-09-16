@@ -4,6 +4,8 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 
+import { Prisma } from '@prisma/client';
+
 import { PrismaService } from '../prisma.service';
 
 import { CreateCampaignDto } from './dto/create-campaign.dto';
@@ -69,7 +71,8 @@ export class CampaignService {
     if (
       dto.startDate &&
       dto.endDate &&
-      new Date(dto.endDate) < new Date(dto.startDate)
+      new Date(dto.endDate) <
+        new Date(dto.startDate)
     ) {
       throw new ConflictException(
         'End date cannot be earlier than start date',
@@ -445,6 +448,15 @@ export class CampaignService {
         },
       });
 
+    /**
+     * Convert DTO into plain JSON-safe data
+     * before storing it in Prisma Json field.
+     */
+    const auditChanges =
+      JSON.parse(
+        JSON.stringify(dto),
+      ) as Prisma.InputJsonValue;
+
     await this.prisma.auditLog.create({
       data: {
         action: 'CAMPAIGN_UPDATE',
@@ -453,7 +465,7 @@ export class CampaignService {
         userId,
 
         metadata: {
-          changes: dto,
+          changes: auditChanges,
         },
       },
     });
