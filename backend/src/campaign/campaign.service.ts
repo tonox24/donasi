@@ -17,12 +17,17 @@ export class CampaignService {
     private readonly prisma: PrismaService,
   ) {}
 
+  // =========================================================
+  // CREATE CAMPAIGN
+  // =========================================================
+
   async create(
     dto: CreateCampaignDto,
     userId: string,
   ) {
     const slug = dto.slug.trim().toLowerCase();
 
+    // Check duplicate slug
     const existing =
       await this.prisma.campaign.findUnique({
         where: {
@@ -36,6 +41,7 @@ export class CampaignService {
       );
     }
 
+    // Validate program
     const program =
       await this.prisma.program.findUnique({
         where: {
@@ -49,6 +55,7 @@ export class CampaignService {
       );
     }
 
+    // Validate category
     const category =
       await this.prisma.campaignCategory.findUnique({
         where: {
@@ -62,12 +69,14 @@ export class CampaignService {
       );
     }
 
+    // Category must be active
     if (!category.isActive) {
       throw new ConflictException(
         'Campaign category is inactive',
       );
     }
 
+    // Validate date range
     if (
       dto.startDate &&
       dto.endDate &&
@@ -79,6 +88,7 @@ export class CampaignService {
       );
     }
 
+    // Create campaign
     const campaign =
       await this.prisma.campaign.create({
         data: {
@@ -92,7 +102,8 @@ export class CampaignService {
           description:
             dto.description?.trim() || null,
 
-          targetAmount: dto.targetAmount,
+          targetAmount:
+            dto.targetAmount,
 
           currency:
             dto.currency?.trim().toUpperCase() ||
@@ -106,13 +117,17 @@ export class CampaignService {
             ? new Date(dto.endDate)
             : null,
 
-          status: dto.status ?? 'DRAFT',
+          status:
+            dto.status ?? 'DRAFT',
 
-          programId: dto.programId,
+          programId:
+            dto.programId,
 
-          categoryId: dto.categoryId,
+          categoryId:
+            dto.categoryId,
 
-          createdById: userId,
+          createdById:
+            userId,
 
           publishedAt:
             dto.status === 'PUBLISHED'
@@ -139,24 +154,42 @@ export class CampaignService {
         },
       });
 
+    // Audit log
     await this.prisma.auditLog.create({
       data: {
-        action: 'CAMPAIGN_CREATE',
-        entity: 'Campaign',
-        entityId: campaign.id,
+        action:
+          'CAMPAIGN_CREATE',
+
+        entity:
+          'Campaign',
+
+        entityId:
+          campaign.id,
+
         userId,
 
         metadata: {
-          title: campaign.title,
-          slug: campaign.slug,
-          programId: campaign.programId,
-          categoryId: campaign.categoryId,
+          title:
+            campaign.title,
+
+          slug:
+            campaign.slug,
+
+          programId:
+            campaign.programId,
+
+          categoryId:
+            campaign.categoryId,
         },
       },
     });
 
     return campaign;
   }
+
+  // =========================================================
+  // FIND ALL CAMPAIGNS
+  // =========================================================
 
   async findAll() {
     return this.prisma.campaign.findMany({
@@ -191,6 +224,10 @@ export class CampaignService {
       },
     });
   }
+
+  // =========================================================
+  // FIND ONE CAMPAIGN
+  // =========================================================
 
   async findOne(id: string) {
     const campaign =
@@ -247,11 +284,16 @@ export class CampaignService {
     return campaign;
   }
 
+  // =========================================================
+  // UPDATE CAMPAIGN
+  // =========================================================
+
   async update(
     id: string,
     dto: UpdateCampaignDto,
     userId: string,
   ) {
+    // Check campaign
     const existing =
       await this.prisma.campaign.findUnique({
         where: {
@@ -264,6 +306,10 @@ export class CampaignService {
         'Campaign not found',
       );
     }
+
+    // -------------------------------------------------------
+    // Check slug
+    // -------------------------------------------------------
 
     if (dto.slug !== undefined) {
       const slug =
@@ -287,6 +333,10 @@ export class CampaignService {
       }
     }
 
+    // -------------------------------------------------------
+    // Check program
+    // -------------------------------------------------------
+
     if (dto.programId !== undefined) {
       const program =
         await this.prisma.program.findUnique({
@@ -301,6 +351,10 @@ export class CampaignService {
         );
       }
     }
+
+    // -------------------------------------------------------
+    // Check category
+    // -------------------------------------------------------
 
     if (dto.categoryId !== undefined) {
       const category =
@@ -323,6 +377,10 @@ export class CampaignService {
       }
     }
 
+    // -------------------------------------------------------
+    // Validate dates
+    // -------------------------------------------------------
+
     const startDate =
       dto.startDate !== undefined
         ? new Date(dto.startDate)
@@ -343,12 +401,17 @@ export class CampaignService {
       );
     }
 
+    // -------------------------------------------------------
+    // Campaign status
+    // -------------------------------------------------------
+
     const newStatus =
       dto.status ?? existing.status;
 
     let publishedAt =
       existing.publishedAt;
 
+    // First transition to PUBLISHED
     if (
       newStatus === 'PUBLISHED' &&
       existing.status !== 'PUBLISHED'
@@ -356,11 +419,16 @@ export class CampaignService {
       publishedAt = new Date();
     }
 
+    // If campaign is no longer published
     if (
       newStatus !== 'PUBLISHED'
     ) {
       publishedAt = null;
     }
+
+    // -------------------------------------------------------
+    // Update campaign
+    // -------------------------------------------------------
 
     const campaign =
       await this.prisma.campaign.update({
@@ -370,13 +438,15 @@ export class CampaignService {
 
         data: {
           ...(dto.title !== undefined && {
-            title: dto.title.trim(),
+            title:
+              dto.title.trim(),
           }),
 
           ...(dto.slug !== undefined && {
-            slug: dto.slug
-              .trim()
-              .toLowerCase(),
+            slug:
+              dto.slug
+                .trim()
+                .toLowerCase(),
           }),
 
           ...(dto.shortDescription !== undefined && {
@@ -448,39 +518,54 @@ export class CampaignService {
         },
       });
 
-   /**
- * Convert DTO into plain JSON-safe data
- * before storing it in Prisma Json field.
- *
- * Campaign audit metadata is explicitly converted
- * to Prisma.InputJsonObject for JSON compatibility.
- */
-   const auditChanges =
-  JSON.parse(
-    JSON.stringify(dto),
-  ) as Prisma.InputJsonObject;
+    // -------------------------------------------------------
+    // Convert DTO to Prisma JSON-safe object
+    // -------------------------------------------------------
 
-const auditMetadata: Prisma.InputJsonObject = {
-  changes: auditChanges,
-};
+    const auditChanges =
+      JSON.parse(
+        JSON.stringify(dto),
+      ) as Prisma.InputJsonObject;
 
-await this.prisma.auditLog.create({
-  data: {
-    action: 'CAMPAIGN_UPDATE',
-    entity: 'Campaign',
-    entityId: campaign.id,
-    userId,
-    metadata: auditMetadata,
-  },
-});
+    const auditMetadata:
+      Prisma.InputJsonObject = {
+        changes: auditChanges,
+      };
+
+    // -------------------------------------------------------
+    // Audit log
+    // -------------------------------------------------------
+
+    await this.prisma.auditLog.create({
+      data: {
+        action:
+          'CAMPAIGN_UPDATE',
+
+        entity:
+          'Campaign',
+
+        entityId:
+          campaign.id,
+
+        userId,
+
+        metadata:
+          auditMetadata,
+      },
+    });
 
     return campaign;
   }
+
+  // =========================================================
+  // DELETE CAMPAIGN
+  // =========================================================
 
   async remove(
     id: string,
     userId: string,
   ) {
+    // Check campaign and related data
     const existing =
       await this.prisma.campaign.findUnique({
         where: {
@@ -504,6 +589,7 @@ await this.prisma.auditLog.create({
       );
     }
 
+    // Prevent deletion if related data exists
     if (
       existing._count.images > 0 ||
       existing._count.updates > 0 ||
@@ -514,17 +600,25 @@ await this.prisma.auditLog.create({
       );
     }
 
+    // Delete campaign
     await this.prisma.campaign.delete({
       where: {
         id,
       },
     });
 
+    // Audit log
     await this.prisma.auditLog.create({
       data: {
-        action: 'CAMPAIGN_DELETE',
-        entity: 'Campaign',
-        entityId: id,
+        action:
+          'CAMPAIGN_DELETE',
+
+        entity:
+          'Campaign',
+
+        entityId:
+          id,
+
         userId,
       },
     });
