@@ -19,10 +19,41 @@ const permissions: [string, string][] = [
   ['program.delete', 'Delete programs'],
 
   // Campaign
-  ['campaign.view', 'View campaigns'],
-  ['campaign.create', 'Create campaigns'],
-  ['campaign.update', 'Update campaigns'],
-  ['campaign.delete', 'Delete campaigns'],
+['campaign.view', 'View campaigns'],
+['campaign.create', 'Create campaigns'],
+['campaign.update', 'Update campaigns'],
+['campaign.delete', 'Delete campaigns'],
+
+// Campaign Workflow
+[
+  'campaign.submit_review',
+  'Submit campaign for review',
+],
+
+[
+  'campaign.approve',
+  'Approve campaign',
+],
+
+[
+  'campaign.pause',
+  'Pause campaign',
+],
+
+[
+  'campaign.resume',
+  'Resume campaign',
+],
+
+[
+  'campaign.complete',
+  'Complete campaign',
+],
+
+[
+  'campaign.cancel',
+  'Cancel campaign',
+],
 
   // Campaign Category
   ['campaign-category.view', 'View campaign categories'],
@@ -265,6 +296,12 @@ async function main() {
       'campaign-category.update',
       'campaign-category.delete',
 
+      'campaign.submit_review',
+      'campaign.pause',
+      'campaign.resume',
+      'campaign.complete',
+      'campaign.cancel',
+
       'beneficiary.view',
       'beneficiary.create',
       'beneficiary.update',
@@ -294,6 +331,12 @@ async function main() {
       'campaign-category.create',
       'campaign-category.update',
       'campaign-category.delete',
+
+      'campaign.submit_review',
+      'campaign.pause',
+      'campaign.resume',
+      'campaign.complete',
+      'campaign.cancel',
 
       'beneficiary.view',
 
