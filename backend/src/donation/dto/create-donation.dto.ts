@@ -15,7 +15,7 @@ export class CreateDonationDto {
   campaignId: string;
 
   @IsNumber()
-  @Min(1000)
+  @Min(20000)
   amount: number;
 
   @IsString()
