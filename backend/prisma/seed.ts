@@ -5,7 +5,7 @@ import {
 
 const prisma = new PrismaClient();
 
-const permissions = [
+const permissions: [string, string][] = [
   // User
   ['user.view', 'View users'],
   ['user.create', 'Create users'],
@@ -24,7 +24,7 @@ const permissions = [
   ['campaign.update', 'Update campaigns'],
   ['campaign.delete', 'Delete campaigns'],
 
-  //Permission Campaign
+  // Campaign Category
   ['campaign-category.view', 'View campaign categories'],
   ['campaign-category.create', 'Create campaign categories'],
   ['campaign-category.update', 'Update campaign categories'],
@@ -68,6 +68,49 @@ const permissions = [
   // Audit
   ['audit.view', 'View audit logs'],
 ];
+
+async function assignPermissions(
+  roleName: RoleName,
+  permissionCodes: string[],
+) {
+  const role = await prisma.role.findUnique({
+    where: {
+      name: roleName,
+    },
+  });
+
+  if (!role) {
+    console.log(`Role ${roleName} not found. Skipping.`);
+    return 0;
+  }
+
+  const rolePermissions =
+    await prisma.permission.findMany({
+      where: {
+        code: {
+          in: permissionCodes,
+        },
+      },
+    });
+
+  for (const permission of rolePermissions) {
+    await prisma.rolePermission.upsert({
+      where: {
+        roleId_permissionId: {
+          roleId: role.id,
+          permissionId: permission.id,
+        },
+      },
+      update: {},
+      create: {
+        roleId: role.id,
+        permissionId: permission.id,
+      },
+    });
+  }
+
+  return rolePermissions.length;
+}
 
 async function main() {
   console.log('Starting database seed...');
@@ -195,279 +238,162 @@ async function main() {
 
   // ============================================================
   // 4. PROGRAM ROLE
-  //    PROGRAM receives Program permissions
+  //    PROGRAM receives Program + Campaign + Campaign Category
   // ============================================================
 
-  const programRole = await prisma.role.findUnique({
-    where: {
-      name: RoleName.PROGRAM,
-    },
-  });
+  const programPermissions = await assignPermissions(
+    RoleName.PROGRAM,
+    [
+      'program.view',
+      'program.create',
+      'program.update',
+      'program.delete',
 
-  if (programRole) {
-    const programPermissions =
-      await prisma.permission.findMany({
-        where: {
-          code: {
-            in: [
-              'program.view',
-              'program.create',
-              'program.update',
-              'program.delete',
-              'campaign-category.view',
-              'campaign-category.create',
-              'campaign-category.update',
-              'campaign-category.delete',
-            ],
-          },
-        },
-      });
+      'campaign.view',
+      'campaign.create',
+      'campaign.update',
+      'campaign.delete',
 
-    for (const permission of programPermissions) {
-      await prisma.rolePermission.upsert({
-        where: {
-          roleId_permissionId: {
-            roleId: programRole.id,
-            permissionId: permission.id,
-          },
-        },
-        update: {},
-        create: {
-          roleId: programRole.id,
-          permissionId: permission.id,
-        },
-      });
-    }
+      'campaign-category.view',
+      'campaign-category.create',
+      'campaign-category.update',
+      'campaign-category.delete',
+    ],
+  );
 
-    console.log(
-      `PROGRAM permissions assigned: ${programPermissions.length}`,
-    );
-  }
+  console.log(
+    `PROGRAM permissions assigned: ${programPermissions}`,
+  );
 
   // ============================================================
   // 5. FUNDRAISING ROLE
-  //    FUNDRAISING receives Campaign + Donation permissions
+  //    FUNDRAISING receives Campaign + Campaign Category
+  //    + Donation permissions
   // ============================================================
 
-  const fundraisingRole = await prisma.role.findUnique({
-    where: {
-      name: RoleName.FUNDRAISING,
-    },
-  });
+  const fundraisingPermissions = await assignPermissions(
+    RoleName.FUNDRAISING,
+    [
+      'campaign.view',
+      'campaign.create',
+      'campaign.update',
+      'campaign.delete',
 
-  if (fundraisingRole) {
-    const fundraisingPermissions =
-      await prisma.permission.findMany({
-        where: {
-          code: {
-            in: [
-              'campaign.view',
-              'campaign.create',
-              'campaign.update',
-              'campaign.delete',
-              'donation.view',
-              'donation.create',
-            ],
-          },
-        },
-      });
+      'campaign-category.view',
+      'campaign-category.create',
+      'campaign-category.update',
+      'campaign-category.delete',
 
-    for (const permission of fundraisingPermissions) {
-      await prisma.rolePermission.upsert({
-        where: {
-          roleId_permissionId: {
-            roleId: fundraisingRole.id,
-            permissionId: permission.id,
-          },
-        },
-        update: {},
-        create: {
-          roleId: fundraisingRole.id,
-          permissionId: permission.id,
-        },
-      });
-    }
+      'donation.view',
+      'donation.create',
+    ],
+  );
 
-    console.log(
-      `FUNDRAISING permissions assigned: ${fundraisingPermissions.length}`,
-    );
-  }
+  console.log(
+    `FUNDRAISING permissions assigned: ${fundraisingPermissions}`,
+  );
 
   // ============================================================
   // 6. FINANCE ROLE
   //    FINANCE receives Payment + Finance + Receipt + Report
   // ============================================================
 
-  const financeRole = await prisma.role.findUnique({
-    where: {
-      name: RoleName.FINANCE,
-    },
-  });
+  const financePermissions = await assignPermissions(
+    RoleName.FINANCE,
+    [
+      'payment.view',
+      'payment.manage',
 
-  if (financeRole) {
-    const financePermissions =
-      await prisma.permission.findMany({
-        where: {
-          code: {
-            in: [
-              'payment.view',
-              'payment.manage',
-              'receipt.view',
-              'receipt.create',
-              'finance.view',
-              'finance.manage',
-              'report.view',
-            ],
-          },
-        },
-      });
+      'receipt.view',
+      'receipt.create',
 
-    for (const permission of financePermissions) {
-      await prisma.rolePermission.upsert({
-        where: {
-          roleId_permissionId: {
-            roleId: financeRole.id,
-            permissionId: permission.id,
-          },
-        },
-        update: {},
-        create: {
-          roleId: financeRole.id,
-          permissionId: permission.id,
-        },
-      });
-    }
+      'finance.view',
+      'finance.manage',
 
-    console.log(
-      `FINANCE permissions assigned: ${financePermissions.length}`,
-    );
-  }
+      'report.view',
+    ],
+  );
+
+  console.log(
+    `FINANCE permissions assigned: ${financePermissions}`,
+  );
 
   // ============================================================
   // 7. SELLER ROLE
   //    SELLER receives Seller + Product + Order permissions
   // ============================================================
 
-  const sellerRole = await prisma.role.findUnique({
-    where: {
-      name: RoleName.SELLER,
-    },
-  });
+  const sellerPermissions = await assignPermissions(
+    RoleName.SELLER,
+    [
+      'seller.view',
+      'seller.manage',
 
-  if (sellerRole) {
-    const sellerPermissions =
-      await prisma.permission.findMany({
-        where: {
-          code: {
-            in: [
-              'seller.view',
-              'seller.manage',
-              'product.view',
-              'product.manage',
-              'order.view',
-              'order.manage',
-            ],
-          },
-        },
-      });
+      'product.view',
+      'product.manage',
 
-    for (const permission of sellerPermissions) {
-      await prisma.rolePermission.upsert({
-        where: {
-          roleId_permissionId: {
-            roleId: sellerRole.id,
-            permissionId: permission.id,
-          },
-        },
-        update: {},
-        create: {
-          roleId: sellerRole.id,
-          permissionId: permission.id,
-        },
-      });
-    }
+      'order.view',
+      'order.manage',
+    ],
+  );
 
-    console.log(
-      `SELLER permissions assigned: ${sellerPermissions.length}`,
-    );
-  }
+  console.log(
+    `SELLER permissions assigned: ${sellerPermissions}`,
+  );
 
   // ============================================================
   // 8. ADMIN ROLE
   //    ADMIN receives operational permissions
   // ============================================================
 
-  const adminRole = await prisma.role.findUnique({
-    where: {
-      name: RoleName.ADMIN,
-    },
-  });
+  const adminPermissions = await assignPermissions(
+    RoleName.ADMIN,
+    [
+      'user.view',
+      'user.create',
+      'user.update',
+      'user.delete',
 
-  if (adminRole) {
-    const adminPermissions =
-      await prisma.permission.findMany({
-        where: {
-          code: {
-            in: [
-              'user.view',
-              'user.create',
-              'user.update',
-              'user.delete',
+      'program.view',
+      'program.create',
+      'program.update',
+      'program.delete',
 
-              'program.view',
-              'program.create',
-              'program.update',
-              'program.delete',
+      'campaign.view',
+      'campaign.create',
+      'campaign.update',
+      'campaign.delete',
 
-              'campaign.view',
-              'campaign.create',
-              'campaign.update',
-              'campaign.delete',
+      'campaign-category.view',
+      'campaign-category.create',
+      'campaign-category.update',
+      'campaign-category.delete',
 
-              'donation.view',
+      'donation.view',
 
-              'payment.view',
+      'payment.view',
 
-              'receipt.view',
+      'receipt.view',
 
-              'finance.view',
+      'finance.view',
 
-              'report.view',
+      'report.view',
 
-              'qurban.view',
+      'qurban.view',
 
-              'seller.view',
+      'seller.view',
 
-              'product.view',
+      'product.view',
 
-              'order.view',
+      'order.view',
 
-              'audit.view',
-            ],
-          },
-        },
-      });
+      'audit.view',
+    ],
+  );
 
-    for (const permission of adminPermissions) {
-      await prisma.rolePermission.upsert({
-        where: {
-          roleId_permissionId: {
-            roleId: adminRole.id,
-            permissionId: permission.id,
-          },
-        },
-        update: {},
-        create: {
-          roleId: adminRole.id,
-          permissionId: permission.id,
-        },
-      });
-    }
-
-    console.log(
-      `ADMIN permissions assigned: ${adminPermissions.length}`,
-    );
-  }
+  console.log(
+    `ADMIN permissions assigned: ${adminPermissions}`,
+  );
 
   // ============================================================
   // 9. COMPLETED
