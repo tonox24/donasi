@@ -448,10 +448,13 @@ export class CampaignService {
         },
       });
 
-    /**
-     * Convert DTO into plain JSON-safe data
-     * before storing it in Prisma Json field.
-     */
+   /**
+ * Convert DTO into plain JSON-safe data
+ * before storing it in Prisma Json field.
+ *
+ * Campaign audit metadata is explicitly converted
+ * to Prisma.InputJsonObject for JSON compatibility.
+ */
    const auditChanges =
   JSON.parse(
     JSON.stringify(dto),
