@@ -11,6 +11,7 @@ import { RbacTestModule } from './rbac-test/rbac-test.module';
 
 import { ProgramModule } from './program/program.module';
 import { CampaignModule } from './campaign/campaign.module';
+import { CampaignCategoryModule } from './campaign-category/campaign-category.module';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { CampaignModule } from './campaign/campaign.module';
     ProgramModule,
 
     CampaignModule,
+    CampaignCategoryModule,
   ],
 
   controllers: [
