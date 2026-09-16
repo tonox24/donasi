@@ -556,7 +556,205 @@ export class CampaignService {
 
     return campaign;
   }
+  // =========================================================
+  // GET CAMPAIGN BENEFICIARIES
+  // =========================================================
 
+  async findBeneficiaries(
+    campaignId: string,
+  ) {
+    const campaign =
+      await this.prisma.campaign.findUnique({
+        where: {
+          id: campaignId,
+        },
+      });
+
+    if (!campaign) {
+      throw new NotFoundException(
+        'Campaign not found',
+      );
+    }
+
+    const relations =
+      await this.prisma.campaignBeneficiary.findMany({
+        where: {
+          campaignId,
+        },
+        orderBy: {
+          createdAt: 'asc',
+        },
+        include: {
+          beneficiary: true,
+        },
+      });
+
+    return relations.map(
+      (relation) =>
+        relation.beneficiary,
+    );
+  }
+
+  // =========================================================
+  // ASSIGN BENEFICIARY TO CAMPAIGN
+  // =========================================================
+
+  async assignBeneficiary(
+    campaignId: string,
+    beneficiaryId: string,
+    userId: string,
+  ) {
+    // Check campaign
+    const campaign =
+      await this.prisma.campaign.findUnique({
+        where: {
+          id: campaignId,
+        },
+      });
+
+    if (!campaign) {
+      throw new NotFoundException(
+        'Campaign not found',
+      );
+    }
+
+    // Check beneficiary
+    const beneficiary =
+      await this.prisma.beneficiary.findUnique({
+        where: {
+          id: beneficiaryId,
+        },
+      });
+
+    if (!beneficiary) {
+      throw new NotFoundException(
+        'Beneficiary not found',
+      );
+    }
+
+    // Beneficiary must be active
+    if (!beneficiary.isActive) {
+      throw new ConflictException(
+        'Beneficiary is inactive',
+      );
+    }
+
+    // Check existing relation
+    const existing =
+      await this.prisma.campaignBeneficiary.findUnique({
+        where: {
+          campaignId_beneficiaryId: {
+            campaignId,
+            beneficiaryId,
+          },
+        },
+      });
+
+    if (existing) {
+      throw new ConflictException(
+        'Beneficiary is already assigned to this campaign',
+      );
+    }
+
+    // Create relation
+    await this.prisma.campaignBeneficiary.create({
+      data: {
+        campaignId,
+        beneficiaryId,
+      },
+    });
+
+    // Audit log
+    await this.prisma.auditLog.create({
+      data: {
+        action:
+          'CAMPAIGN_BENEFICIARY_ASSIGN',
+
+        entity:
+          'CampaignBeneficiary',
+
+        entityId:
+          campaignId,
+
+        userId,
+
+        metadata: {
+          campaignId,
+          beneficiaryId,
+        },
+      },
+    });
+
+    return {
+      message:
+        'Beneficiary assigned to campaign successfully',
+      campaignId,
+      beneficiaryId,
+    };
+  }
+
+  // =========================================================
+  // REMOVE BENEFICIARY FROM CAMPAIGN
+  // =========================================================
+
+  async removeBeneficiary(
+    campaignId: string,
+    beneficiaryId: string,
+    userId: string,
+  ) {
+    const relation =
+      await this.prisma.campaignBeneficiary.findUnique({
+        where: {
+          campaignId_beneficiaryId: {
+            campaignId,
+            beneficiaryId,
+          },
+        },
+      });
+
+    if (!relation) {
+      throw new NotFoundException(
+        'Campaign beneficiary relationship not found',
+      );
+    }
+
+    await this.prisma.campaignBeneficiary.delete({
+      where: {
+        campaignId_beneficiaryId: {
+          campaignId,
+          beneficiaryId,
+        },
+      },
+    });
+
+    // Audit log
+    await this.prisma.auditLog.create({
+      data: {
+        action:
+          'CAMPAIGN_BENEFICIARY_REMOVE',
+
+        entity:
+          'CampaignBeneficiary',
+
+        entityId:
+          campaignId,
+
+        userId,
+
+        metadata: {
+          campaignId,
+          beneficiaryId,
+        },
+      },
+    });
+
+    return {
+      message:
+        'Beneficiary removed from campaign successfully',
+      campaignId,
+      beneficiaryId,
+    };
+  }
   // =========================================================
   // DELETE CAMPAIGN
   // =========================================================
