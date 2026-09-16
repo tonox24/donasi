@@ -8,6 +8,7 @@ import { RbacTestModule } from './rbac-test/rbac-test.module';
 import { ProgramModule } from './program/program.module';
 import { CampaignModule } from './campaign/campaign.module';
 import { CampaignCategoryModule } from './campaign-category/campaign-category.module';
+import { BeneficiaryModule } from './beneficiary/beneficiary.module';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { CampaignCategoryModule } from './campaign-category/campaign-category.mo
 
     CampaignModule,
     CampaignCategoryModule,
+    BeneficiaryModule,
   ],
 
   controllers: [
