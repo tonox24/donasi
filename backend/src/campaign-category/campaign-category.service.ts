@@ -4,6 +4,8 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 
+import { Prisma } from '@prisma/client';
+
 import { PrismaService } from '../prisma.service';
 
 import { CreateCampaignCategoryDto } from './dto/create-campaign-category.dto';
@@ -14,6 +16,10 @@ export class CampaignCategoryService {
   constructor(
     private readonly prisma: PrismaService,
   ) {}
+
+  // ============================================================
+  // CREATE
+  // ============================================================
 
   async create(
     dto: CreateCampaignCategoryDto,
@@ -60,6 +66,10 @@ export class CampaignCategoryService {
     return category;
   }
 
+  // ============================================================
+  // FIND ALL
+  // ============================================================
+
   async findAll() {
     return this.prisma.campaignCategory.findMany({
       orderBy: {
@@ -74,6 +84,10 @@ export class CampaignCategoryService {
       },
     });
   }
+
+  // ============================================================
+  // FIND ONE
+  // ============================================================
 
   async findOne(id: string) {
     const category =
@@ -99,6 +113,10 @@ export class CampaignCategoryService {
     return category;
   }
 
+  // ============================================================
+  // UPDATE
+  // ============================================================
+
   async update(
     id: string,
     dto: UpdateCampaignCategoryDto,
@@ -116,6 +134,10 @@ export class CampaignCategoryService {
         'Campaign category not found',
       );
     }
+
+    // ----------------------------------------------------------
+    // Check duplicate slug
+    // ----------------------------------------------------------
 
     if (dto.slug !== undefined) {
       const slug =
@@ -137,6 +159,10 @@ export class CampaignCategoryService {
         );
       }
     }
+
+    // ----------------------------------------------------------
+    // Update category
+    // ----------------------------------------------------------
 
     const category =
       await this.prisma.campaignCategory.update({
@@ -165,20 +191,39 @@ export class CampaignCategoryService {
         },
       });
 
+    // ----------------------------------------------------------
+    // Convert DTO to Prisma JSON-safe object
+    // ----------------------------------------------------------
+
+    const auditChanges =
+      JSON.parse(
+        JSON.stringify(dto),
+      ) as Prisma.InputJsonObject;
+
+    const auditMetadata: Prisma.InputJsonObject = {
+      changes: auditChanges,
+    };
+
+    // ----------------------------------------------------------
+    // Audit log
+    // ----------------------------------------------------------
+
     await this.prisma.auditLog.create({
       data: {
         action: 'CAMPAIGN_CATEGORY_UPDATE',
         entity: 'CampaignCategory',
         entityId: category.id,
         userId,
-        metadata: {
-          changes: dto,
-        },
+        metadata: auditMetadata,
       },
     });
 
     return category;
   }
+
+  // ============================================================
+  // DELETE
+  // ============================================================
 
   async remove(
     id: string,
@@ -204,17 +249,29 @@ export class CampaignCategoryService {
       );
     }
 
+    // ----------------------------------------------------------
+    // Prevent deletion when category is used by campaigns
+    // ----------------------------------------------------------
+
     if (existing._count.campaigns > 0) {
       throw new ConflictException(
         'Campaign category cannot be deleted because it contains campaigns',
       );
     }
 
+    // ----------------------------------------------------------
+    // Delete
+    // ----------------------------------------------------------
+
     await this.prisma.campaignCategory.delete({
       where: {
         id,
       },
     });
+
+    // ----------------------------------------------------------
+    // Audit log
+    // ----------------------------------------------------------
 
     await this.prisma.auditLog.create({
       data: {
