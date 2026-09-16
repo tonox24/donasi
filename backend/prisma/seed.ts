@@ -420,10 +420,12 @@ async function main() {
       'campaign.update',
       'campaign.delete',
 
-      'campaign-category.view',
-      'campaign-category.create',
-      'campaign-category.update',
-      'campaign-category.delete',
+      'campaign.submit_review',
+      'campaign.approve',
+      'campaign.pause',
+      'campaign.resume',
+      'campaign.complete',
+      'campaign.cancel',
 
       'beneficiary.view',
       'beneficiary.create',
