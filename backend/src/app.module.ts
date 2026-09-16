@@ -9,6 +9,7 @@ import { ProgramModule } from './program/program.module';
 import { CampaignModule } from './campaign/campaign.module';
 import { CampaignCategoryModule } from './campaign-category/campaign-category.module';
 import { BeneficiaryModule } from './beneficiary/beneficiary.module';
+import { DonationModule } from './donation/donation.module';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { BeneficiaryModule } from './beneficiary/beneficiary.module';
     CampaignModule,
     CampaignCategoryModule,
     BeneficiaryModule,
+    DonationModule,
   ],
 
   controllers: [
