@@ -3,7 +3,9 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+
 import { PrismaService } from '../prisma.service';
+
 import { CreateProgramDto } from './dto/create-program.dto';
 import { UpdateProgramDto } from './dto/update-program.dto';
 
@@ -13,14 +15,19 @@ export class ProgramService {
     private readonly prisma: PrismaService,
   ) {}
 
+  // =========================================================
+  // CREATE
+  // =========================================================
   async create(
     dto: CreateProgramDto,
     userId: string,
   ) {
+    const slug = dto.slug.trim().toLowerCase();
+
     const existing =
       await this.prisma.program.findUnique({
         where: {
-          slug: dto.slug,
+          slug,
         },
       });
 
@@ -34,7 +41,7 @@ export class ProgramService {
       await this.prisma.program.create({
         data: {
           name: dto.name.trim(),
-          slug: dto.slug.trim().toLowerCase(),
+          slug,
           description:
             dto.description?.trim() || null,
           createdById: userId,
@@ -57,6 +64,9 @@ export class ProgramService {
     return program;
   }
 
+  // =========================================================
+  // FIND ALL
+  // =========================================================
   async findAll() {
     return this.prisma.program.findMany({
       orderBy: {
@@ -72,11 +82,16 @@ export class ProgramService {
     });
   }
 
+  // =========================================================
+  // FIND ONE
+  // =========================================================
   async findOne(id: string) {
+    const programId = id.trim();
+
     const program =
-      await this.prisma.program.findUnique({
+      await this.prisma.program.findFirst({
         where: {
-          id,
+          id: programId,
         },
         include: {
           campaigns: {
@@ -105,15 +120,20 @@ export class ProgramService {
     return program;
   }
 
+  // =========================================================
+  // UPDATE
+  // =========================================================
   async update(
     id: string,
     dto: UpdateProgramDto,
     userId: string,
   ) {
+    const programId = id.trim();
+
     const existing =
-      await this.prisma.program.findUnique({
+      await this.prisma.program.findFirst({
         where: {
-          id,
+          id: programId,
         },
       });
 
@@ -123,13 +143,17 @@ export class ProgramService {
       );
     }
 
-    if (dto.slug) {
+    // Check duplicate slug
+    if (dto.slug !== undefined) {
+      const slug =
+        dto.slug.trim().toLowerCase();
+
       const slugOwner =
         await this.prisma.program.findFirst({
           where: {
-            slug: dto.slug.trim().toLowerCase(),
+            slug,
             NOT: {
-              id,
+              id: programId,
             },
           },
         });
@@ -144,19 +168,24 @@ export class ProgramService {
     const program =
       await this.prisma.program.update({
         where: {
-          id,
+          id: programId,
         },
         data: {
           ...(dto.name !== undefined && {
             name: dto.name.trim(),
           }),
+
           ...(dto.slug !== undefined && {
-            slug: dto.slug.trim().toLowerCase(),
+            slug: dto.slug
+              .trim()
+              .toLowerCase(),
           }),
+
           ...(dto.description !== undefined && {
             description:
               dto.description.trim() || null,
           }),
+
           ...(dto.status !== undefined && {
             status: dto.status,
           }),
@@ -169,23 +198,41 @@ export class ProgramService {
         entity: 'Program',
         entityId: program.id,
         userId,
-       metadata: {
-  changes: { ...dto },
-},
+        metadata: {
+          changes: {
+            ...(dto.name !== undefined && {
+              name: dto.name,
+            }),
+            ...(dto.slug !== undefined && {
+              slug: dto.slug,
+            }),
+            ...(dto.description !== undefined && {
+              description: dto.description,
+            }),
+            ...(dto.status !== undefined && {
+              status: dto.status,
+            }),
+          },
+        },
       },
     });
 
     return program;
   }
 
+  // =========================================================
+  // DELETE
+  // =========================================================
   async remove(
     id: string,
     userId: string,
   ) {
+    const programId = id.trim();
+
     const existing =
-      await this.prisma.program.findUnique({
+      await this.prisma.program.findFirst({
         where: {
-          id,
+          id: programId,
         },
         include: {
           _count: {
@@ -210,7 +257,7 @@ export class ProgramService {
 
     await this.prisma.program.delete({
       where: {
-        id,
+        id: programId,
       },
     });
 
@@ -218,13 +265,14 @@ export class ProgramService {
       data: {
         action: 'PROGRAM_DELETE',
         entity: 'Program',
-        entityId: id,
+        entityId: programId,
         userId,
       },
     });
 
     return {
-      message: 'Program deleted successfully',
+      message:
+        'Program deleted successfully',
     };
   }
 }
