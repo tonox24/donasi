@@ -55,9 +55,7 @@ export class CampaignController {
   findBeneficiaries(
     @Param('id') id: string,
   ) {
-    return this.campaignService.findBeneficiaries(
-      id,
-    );
+    return this.campaignService.findBeneficiaries(id);
   }
 
   // =========================================================
@@ -103,6 +101,28 @@ export class CampaignController {
   }
 
   // =========================================================
+  // REMOVE BENEFICIARY FROM CAMPAIGN
+  // =========================================================
+
+  @UseGuards(
+    JwtAuthGuard,
+    PermissionsGuard,
+  )
+  @Permissions('campaign.update')
+  @Delete(':id/beneficiaries/:beneficiaryId')
+  removeBeneficiary(
+    @Param('id') campaignId: string,
+    @Param('beneficiaryId') beneficiaryId: string,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.campaignService.removeBeneficiary(
+      campaignId,
+      beneficiaryId,
+      user.id,
+    );
+  }
+
+  // =========================================================
   // UPDATE CAMPAIGN
   // =========================================================
 
@@ -125,7 +145,7 @@ export class CampaignController {
   }
 
   // =========================================================
-  // REMOVE BENEFICIARY FROM CAMPAIGN
+  // SUBMIT CAMPAIGN FOR REVIEW
   // =========================================================
 
   @UseGuards(
@@ -133,15 +153,113 @@ export class CampaignController {
     PermissionsGuard,
   )
   @Permissions('campaign.update')
-  @Delete(':id/beneficiaries/:beneficiaryId')
-  removeBeneficiary(
-    @Param('id') campaignId: string,
-    @Param('beneficiaryId') beneficiaryId: string,
+  @Post(':id/submit-review')
+  submitForReview(
+    @Param('id') id: string,
     @CurrentUser() user: { id: string },
   ) {
-    return this.campaignService.removeBeneficiary(
-      campaignId,
-      beneficiaryId,
+    return this.campaignService.submitForReview(
+      id,
+      user.id,
+    );
+  }
+
+  // =========================================================
+  // APPROVE / PUBLISH CAMPAIGN
+  // =========================================================
+
+  @UseGuards(
+    JwtAuthGuard,
+    PermissionsGuard,
+  )
+  @Permissions('campaign.approve')
+  @Post(':id/approve')
+  approve(
+    @Param('id') id: string,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.campaignService.approve(
+      id,
+      user.id,
+    );
+  }
+
+  // =========================================================
+  // PAUSE CAMPAIGN
+  // =========================================================
+
+  @UseGuards(
+    JwtAuthGuard,
+    PermissionsGuard,
+  )
+  @Permissions('campaign.update')
+  @Post(':id/pause')
+  pause(
+    @Param('id') id: string,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.campaignService.pause(
+      id,
+      user.id,
+    );
+  }
+
+  // =========================================================
+  // RESUME CAMPAIGN
+  // =========================================================
+
+  @UseGuards(
+    JwtAuthGuard,
+    PermissionsGuard,
+  )
+  @Permissions('campaign.update')
+  @Post(':id/resume')
+  resume(
+    @Param('id') id: string,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.campaignService.resume(
+      id,
+      user.id,
+    );
+  }
+
+  // =========================================================
+  // COMPLETE CAMPAIGN
+  // =========================================================
+
+  @UseGuards(
+    JwtAuthGuard,
+    PermissionsGuard,
+  )
+  @Permissions('campaign.update')
+  @Post(':id/complete')
+  complete(
+    @Param('id') id: string,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.campaignService.complete(
+      id,
+      user.id,
+    );
+  }
+
+  // =========================================================
+  // CANCEL CAMPAIGN
+  // =========================================================
+
+  @UseGuards(
+    JwtAuthGuard,
+    PermissionsGuard,
+  )
+  @Permissions('campaign.update')
+  @Post(':id/cancel')
+  cancel(
+    @Param('id') id: string,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.campaignService.cancel(
+      id,
       user.id,
     );
   }
