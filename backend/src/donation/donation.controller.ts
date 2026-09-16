@@ -4,13 +4,11 @@ import {
   Get,
   Param,
   Post,
-  UseGuards,
 } from '@nestjs/common';
 
 import { DonationService } from './donation.service';
 import { CreateDonationDto } from './dto/create-donation.dto';
 
-import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 
 @Controller('donations')
@@ -23,29 +21,21 @@ export class DonationController {
    * CREATE DONATION
    *
    * Guest donor is allowed.
-   *
-   * If Authorization Bearer token is provided,
-   * the donation will be associated with the logged-in user.
+   * Logged-in donor can also create donation.
    */
   @Post()
-  @UseGuards(JwtAuthGuard)
   create(
     @Body() dto: CreateDonationDto,
-    @CurrentUser() user: { id: string },
+    @CurrentUser() user?: { id: string },
   ) {
     return this.donationService.create(
       dto,
-      user.id,
+      user?.id,
     );
   }
 
   /**
    * GET ALL DONATIONS
-   *
-   * Temporary endpoint for MVP development.
-   *
-   * Later this endpoint should be protected
-   * using donation.view permission.
    */
   @Get()
   findAll() {
@@ -53,21 +43,9 @@ export class DonationController {
   }
 
   /**
-   * GET DONATION DETAIL
-   */
-  @Get(':id')
-  findOne(
-    @Param('id') id: string,
-  ) {
-    return this.donationService.findOne(id);
-  }
-
-  /**
    * GET DONATIONS BY CAMPAIGN
    *
-   * IMPORTANT:
-   * This route must be declared before /:id
-   * to make the route intention explicit.
+   * Must be declared before /:id.
    */
   @Get('campaign/:campaignId')
   findByCampaign(
@@ -88,5 +66,15 @@ export class DonationController {
     return this.donationService.findByDonor(
       donorId,
     );
+  }
+
+  /**
+   * GET DONATION DETAIL
+   */
+  @Get(':id')
+  findOne(
+    @Param('id') id: string,
+  ) {
+    return this.donationService.findOne(id);
   }
 }
