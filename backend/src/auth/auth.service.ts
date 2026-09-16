@@ -3,10 +3,12 @@ import {
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
+
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { createHash } from 'crypto';
 import { Prisma } from '@prisma/client';
+
 import { PrismaService } from '../prisma.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
@@ -18,14 +20,17 @@ type AuditContext = {
 
 @Injectable()
 export class AuthService {
-  private readonly REFRESH_TOKEN_TTL_SECONDS = 30 * 24 * 60 * 60;
+  private readonly REFRESH_TOKEN_TTL_SECONDS =
+    30 * 24 * 60 * 60;
 
   constructor(
     private readonly jwtService: JwtService,
     private readonly prisma: PrismaService,
   ) {}
 
-  async hashPassword(password: string): Promise<string> {
+  async hashPassword(
+    password: string,
+  ): Promise<string> {
     return bcrypt.hash(password, 12);
   }
 
@@ -33,11 +38,18 @@ export class AuthService {
     password: string,
     passwordHash: string,
   ): Promise<boolean> {
-    return bcrypt.compare(password, passwordHash);
+    return bcrypt.compare(
+      password,
+      passwordHash,
+    );
   }
 
-  private hashRefreshToken(token: string): string {
-    return createHash('sha256').update(token).digest('hex');
+  private hashRefreshToken(
+    token: string,
+  ): string {
+    return createHash('sha256')
+      .update(token)
+      .digest('hex');
   }
 
   /**
@@ -62,23 +74,34 @@ export class AuthService {
         entity,
         entityId: entityId ?? null,
         userId: userId ?? null,
-        ipAddress: context?.ipAddress ?? null,
-        userAgent: context?.userAgent ?? null,
-        metadata: metadata ?? undefined,
+        ipAddress:
+          context?.ipAddress ?? null,
+        userAgent:
+          context?.userAgent ?? null,
+
+        ...(metadata !== undefined
+          ? {
+              metadata,
+            }
+          : {}),
       },
     });
   }
 
   /**
-   * Get complete user authentication data including:
+   * Get complete user authentication data
+   * including:
    * - roles
    * - permissions
    */
-  private async getUserForAuth(userId: string) {
+  private async getUserForAuth(
+    userId: string,
+  ) {
     return this.prisma.user.findUnique({
       where: {
         id: userId,
       },
+
       include: {
         roles: {
           include: {
@@ -98,7 +121,8 @@ export class AuthService {
   }
 
   /**
-   * Convert database user to safe authentication response.
+   * Convert database user to safe
+   * authentication response.
    *
    * passwordHash is intentionally NOT returned.
    */
@@ -111,16 +135,18 @@ export class AuthService {
       status: user.status,
 
       roles: user.roles.map(
-        (item: any) => item.role.name,
+        (item: any) =>
+          item.role.name,
       ),
 
       permissions: [
         ...new Set(
-          user.roles.flatMap((item: any) =>
-            item.role.permissions.map(
-              (rolePermission: any) =>
-                rolePermission.permission.code,
-            ),
+          user.roles.flatMap(
+            (item: any) =>
+              item.role.permissions.map(
+                (rolePermission: any) =>
+                  rolePermission.permission.code,
+              ),
           ),
         ),
       ],
@@ -130,10 +156,12 @@ export class AuthService {
   /**
    * Generate access token + refresh token.
    *
-   * Refresh token is stored only as SHA-256 hash.
+   * Refresh token is stored only
+   * as SHA-256 hash.
    */
   private async issueTokens(user: any) {
-    const authUser = this.buildAuthUser(user);
+    const authUser =
+      this.buildAuthUser(user);
 
     const accessToken =
       await this.jwtService.signAsync({
@@ -155,15 +183,19 @@ export class AuthService {
         },
       );
 
-    const refreshExpiresAt = new Date(
-      Date.now() +
-        this.REFRESH_TOKEN_TTL_SECONDS * 1000,
-    );
+    const refreshExpiresAt =
+      new Date(
+        Date.now() +
+          this.REFRESH_TOKEN_TTL_SECONDS *
+            1000,
+      );
 
     await this.prisma.refreshToken.create({
       data: {
         tokenHash:
-          this.hashRefreshToken(refreshToken),
+          this.hashRefreshToken(
+            refreshToken,
+          ),
 
         userId: authUser.id,
 
@@ -203,7 +235,8 @@ export class AuthService {
         existingUser.id,
         existingUser.id,
         {
-          reason: 'EMAIL_ALREADY_EXISTS',
+          reason:
+            'EMAIL_ALREADY_EXISTS',
         },
         context,
       );
@@ -214,7 +247,9 @@ export class AuthService {
     }
 
     const passwordHash =
-      await this.hashPassword(dto.password);
+      await this.hashPassword(
+        dto.password,
+      );
 
     const donorRole =
       await this.prisma.role.findUnique({
@@ -345,7 +380,8 @@ export class AuthService {
         user.id,
         user.id,
         {
-          reason: 'USER_NOT_ACTIVE',
+          reason:
+            'USER_NOT_ACTIVE',
           status: user.status,
         },
         context,
@@ -372,7 +408,8 @@ export class AuthService {
         user.id,
         user.id,
         {
-          reason: 'INVALID_PASSWORD',
+          reason:
+            'INVALID_PASSWORD',
         },
         context,
       );
@@ -430,7 +467,8 @@ export class AuthService {
         undefined,
         undefined,
         {
-          reason: 'INVALID_OR_EXPIRED_TOKEN',
+          reason:
+            'INVALID_OR_EXPIRED_TOKEN',
         },
         context,
       );
@@ -441,10 +479,12 @@ export class AuthService {
     }
 
     /**
-     * Ensure this is actually a refresh token.
+     * Ensure this is actually
+     * a refresh token.
      */
     if (
-      payload.tokenType !== 'refresh' ||
+      payload.tokenType !==
+        'refresh' ||
       !payload.sub
     ) {
       await this.writeAuditLog(
@@ -453,7 +493,8 @@ export class AuthService {
         undefined,
         undefined,
         {
-          reason: 'INVALID_TOKEN_TYPE',
+          reason:
+            'INVALID_TOKEN_TYPE',
         },
         context,
       );
@@ -472,11 +513,13 @@ export class AuthService {
      * Find refresh token in database.
      */
     const storedToken =
-      await this.prisma.refreshToken.findUnique({
-        where: {
-          tokenHash,
+      await this.prisma.refreshToken.findUnique(
+        {
+          where: {
+            tokenHash,
+          },
         },
-      });
+      );
 
     /**
      * Token doesn't exist,
@@ -486,7 +529,8 @@ export class AuthService {
     if (
       !storedToken ||
       storedToken.revokedAt ||
-      storedToken.expiresAt <= new Date()
+      storedToken.expiresAt <=
+        new Date()
     ) {
       await this.writeAuditLog(
         'AUTH_REFRESH_FAILED',
@@ -541,15 +585,17 @@ export class AuthService {
     /**
      * Revoke old refresh token.
      */
-    await this.prisma.refreshToken.update({
-      where: {
-        id: storedToken.id,
-      },
+    await this.prisma.refreshToken.update(
+      {
+        where: {
+          id: storedToken.id,
+        },
 
-      data: {
-        revokedAt: new Date(),
+        data: {
+          revokedAt: new Date(),
+        },
       },
-    });
+    );
 
     /**
      * Issue new token pair.
@@ -563,7 +609,8 @@ export class AuthService {
       user.id,
       user.id,
       {
-        method: 'refresh_token',
+        method:
+          'refresh_token',
       },
       context,
     );
@@ -588,32 +635,36 @@ export class AuthService {
           refreshToken,
         );
 
-      await this.prisma.refreshToken.updateMany({
-        where: {
-          tokenHash,
-          userId,
-          revokedAt: null,
-        },
+      await this.prisma.refreshToken.updateMany(
+        {
+          where: {
+            tokenHash,
+            userId,
+            revokedAt: null,
+          },
 
-        data: {
-          revokedAt: new Date(),
+          data: {
+            revokedAt: new Date(),
+          },
         },
-      });
+      );
     } else {
       /**
        * Revoke all refresh tokens
        * belonging to this user.
        */
-      await this.prisma.refreshToken.updateMany({
-        where: {
-          userId,
-          revokedAt: null,
-        },
+      await this.prisma.refreshToken.updateMany(
+        {
+          where: {
+            userId,
+            revokedAt: null,
+          },
 
-        data: {
-          revokedAt: new Date(),
+          data: {
+            revokedAt: new Date(),
+          },
         },
-      });
+      );
     }
 
     await this.writeAuditLog(
@@ -630,7 +681,8 @@ export class AuthService {
     );
 
     return {
-      message: 'Logged out successfully',
+      message:
+        'Logged out successfully',
     };
   }
 
