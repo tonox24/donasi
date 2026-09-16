@@ -452,23 +452,24 @@ export class CampaignService {
      * Convert DTO into plain JSON-safe data
      * before storing it in Prisma Json field.
      */
-    const auditChanges =
-      JSON.parse(
-        JSON.stringify(dto),
-      ) as Prisma.InputJsonValue;
+   const auditChanges =
+  JSON.parse(
+    JSON.stringify(dto),
+  ) as Prisma.InputJsonObject;
 
-    await this.prisma.auditLog.create({
-      data: {
-        action: 'CAMPAIGN_UPDATE',
-        entity: 'Campaign',
-        entityId: campaign.id,
-        userId,
+const auditMetadata: Prisma.InputJsonObject = {
+  changes: auditChanges,
+};
 
-        metadata: {
-          changes: auditChanges,
-        },
-      },
-    });
+await this.prisma.auditLog.create({
+  data: {
+    action: 'CAMPAIGN_UPDATE',
+    entity: 'Campaign',
+    entityId: campaign.id,
+    userId,
+    metadata: auditMetadata,
+  },
+});
 
     return campaign;
   }
