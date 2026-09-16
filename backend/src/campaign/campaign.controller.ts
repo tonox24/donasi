@@ -13,6 +13,7 @@ import { CampaignService } from './campaign.service';
 
 import { CreateCampaignDto } from './dto/create-campaign.dto';
 import { UpdateCampaignDto } from './dto/update-campaign.dto';
+import { AssignBeneficiaryDto } from './dto/assign-beneficiary.dto';
 
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
@@ -26,10 +27,18 @@ export class CampaignController {
     private readonly campaignService: CampaignService,
   ) {}
 
+  // =========================================================
+  // GET ALL CAMPAIGNS
+  // =========================================================
+
   @Get()
   findAll() {
     return this.campaignService.findAll();
   }
+
+  // =========================================================
+  // GET ONE CAMPAIGN
+  // =========================================================
 
   @Get(':id')
   findOne(
@@ -37,6 +46,23 @@ export class CampaignController {
   ) {
     return this.campaignService.findOne(id);
   }
+
+  // =========================================================
+  // GET CAMPAIGN BENEFICIARIES
+  // =========================================================
+
+  @Get(':id/beneficiaries')
+  findBeneficiaries(
+    @Param('id') id: string,
+  ) {
+    return this.campaignService.findBeneficiaries(
+      id,
+    );
+  }
+
+  // =========================================================
+  // CREATE CAMPAIGN
+  // =========================================================
 
   @UseGuards(
     JwtAuthGuard,
@@ -53,6 +79,32 @@ export class CampaignController {
       user.id,
     );
   }
+
+  // =========================================================
+  // ASSIGN BENEFICIARY TO CAMPAIGN
+  // =========================================================
+
+  @UseGuards(
+    JwtAuthGuard,
+    PermissionsGuard,
+  )
+  @Permissions('campaign.update')
+  @Post(':id/beneficiaries')
+  assignBeneficiary(
+    @Param('id') campaignId: string,
+    @Body() dto: AssignBeneficiaryDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.campaignService.assignBeneficiary(
+      campaignId,
+      dto.beneficiaryId,
+      user.id,
+    );
+  }
+
+  // =========================================================
+  // UPDATE CAMPAIGN
+  // =========================================================
 
   @UseGuards(
     JwtAuthGuard,
@@ -71,6 +123,32 @@ export class CampaignController {
       user.id,
     );
   }
+
+  // =========================================================
+  // REMOVE BENEFICIARY FROM CAMPAIGN
+  // =========================================================
+
+  @UseGuards(
+    JwtAuthGuard,
+    PermissionsGuard,
+  )
+  @Permissions('campaign.update')
+  @Delete(':id/beneficiaries/:beneficiaryId')
+  removeBeneficiary(
+    @Param('id') campaignId: string,
+    @Param('beneficiaryId') beneficiaryId: string,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.campaignService.removeBeneficiary(
+      campaignId,
+      beneficiaryId,
+      user.id,
+    );
+  }
+
+  // =========================================================
+  // DELETE CAMPAIGN
+  // =========================================================
 
   @UseGuards(
     JwtAuthGuard,
