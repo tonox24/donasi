@@ -24,6 +24,12 @@ const permissions = [
   ['campaign.update', 'Update campaigns'],
   ['campaign.delete', 'Delete campaigns'],
 
+  //Permission Campaign
+  ['campaign-category.view', 'View campaign categories'],
+  ['campaign-category.create', 'Create campaign categories'],
+  ['campaign-category.update', 'Update campaign categories'],
+  ['campaign-category.delete', 'Delete campaign categories'],
+
   // Donation
   ['donation.view', 'View donations'],
   ['donation.create', 'Create donations'],
@@ -208,6 +214,10 @@ async function main() {
               'program.create',
               'program.update',
               'program.delete',
+              'campaign-category.view',
+              'campaign-category.create',
+              'campaign-category.update',
+              'campaign-category.delete',
             ],
           },
         },
