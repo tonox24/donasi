@@ -99,26 +99,30 @@ export class PaymentService {
 
     return payment;
   }
+
   async markAsPaid(
-  id: string,
-  providerTransactionId: string,
-  rawResponse?: Prisma.InputJsonValue,
-) {
-    const payment = await this.prisma.paymentTransaction.findUnique({
-      where: {
-        id,
-      },
-      include: {
-        donation: true,
-      },
-    });
+    id: string,
+    providerTransactionId: string,
+    rawResponse?: Prisma.InputJsonValue,
+  ) {
+    const payment =
+      await this.prisma.paymentTransaction.findUnique({
+        where: {
+          id,
+        },
+        include: {
+          donation: true,
+        },
+      });
 
     if (!payment) {
       throw new NotFoundException('Payment not found');
     }
 
     if (payment.status === 'PAID') {
-      throw new BadRequestException('Payment is already marked as PAID');
+      throw new BadRequestException(
+        'Payment is already marked as PAID',
+      );
     }
 
     if (!['INITIATED', 'PENDING'].includes(payment.status)) {
@@ -136,17 +140,18 @@ export class PaymentService {
     const paidAt = new Date();
 
     return this.prisma.$transaction(async (tx) => {
-      const updatedPayment = await tx.paymentTransaction.update({
-        where: {
-          id,
-        },
-        data: {
-          status: 'PAID',
-          providerTransactionId,
-          paidAt,
-          rawResponse: rawResponse ?? Prisma.JsonNull,
-        },
-      });
+      const updatedPayment =
+        await tx.paymentTransaction.update({
+          where: {
+            id,
+          },
+          data: {
+            status: 'PAID',
+            providerTransactionId,
+            paidAt,
+            rawResponse: rawResponse ?? Prisma.JsonNull,
+          },
+        });
 
       const updatedDonation = await tx.donation.update({
         where: {
@@ -208,140 +213,81 @@ export class PaymentService {
       };
     });
   }
+
   async markAsFailed(
-  id: string,
-  providerTransactionId?: string,
-  rawResponse?: Record<string, unknown>,
-) {
-  const payment = await this.prisma.paymentTransaction.findUnique({
-    where: {
-      id,
-    },
-    include: {
-      donation: true,
-    },
-  });
-
-  if (!payment) {
-    throw new NotFoundException('Payment not found');
-  }
-
-  if (payment.status === 'PAID') {
-    throw new BadRequestException(
-      'PAID payment cannot be marked as FAILED',
-    );
-  }
-
-  if (!['INITIATED', 'PENDING'].includes(payment.status)) {
-    throw new BadRequestException(
-      `Payment cannot be marked as FAILED from status: ${payment.status}`,
-    );
-  }
-
-  return this.prisma.$transaction(async (tx) => {
-    const updatedPayment = await tx.paymentTransaction.update({
-      where: {
-        id,
-      },
-      data: {
-        status: 'FAILED',
-        providerTransactionId,
-        rawResponse: rawResponse ?? undefined,
-      },
-    });
-
-    await tx.auditLog.create({
-      data: {
-        action: 'PAYMENT_FAILED',
-        entity: 'PaymentTransaction',
-        entityId: payment.id,
-        metadata: {
-          donationId: payment.donationId,
-          campaignId: payment.donation.campaignId,
-          providerTransactionId: providerTransactionId ?? null,
-          amount: payment.amount.toString(),
-          currency: payment.currency,
-        },
-      },
-    });
-
-    return {
-      payment: updatedPayment,
-      donation: {
-        id: payment.donation.id,
-        status: payment.donation.status,
-      },
-    };
-  });
-}
-  async markAsFailed(
-  id: string,
-  providerTransactionId?: string,
-  rawResponse?: Record<string, unknown>,
-) {
-  const payment = await this.prisma.paymentTransaction.findUnique({
-    where: {
-      id,
-    },
-    include: {
-      donation: true,
-    },
-  });
-
-  if (!payment) {
-    throw new NotFoundException('Payment not found');
-  }
-
-  if (payment.status === 'PAID') {
-    throw new BadRequestException(
-      'PAID payment cannot be marked as FAILED',
-    );
-  }
-
-  if (!['INITIATED', 'PENDING'].includes(payment.status)) {
-    throw new BadRequestException(
-      `Payment cannot be marked as FAILED from status: ${payment.status}`,
-    );
-  }
-
-  return this.prisma.$transaction(async (tx) => {
-    const updatedPayment =
-      await tx.paymentTransaction.update({
+    id: string,
+    providerTransactionId?: string,
+    rawResponse?: Record<string, unknown>,
+  ) {
+    const payment =
+      await this.prisma.paymentTransaction.findUnique({
         where: {
           id,
         },
-        data: {
-          status: 'FAILED',
-          providerTransactionId,
-          rawResponse: rawResponse ?? Prisma.JsonNull,
+        include: {
+          donation: true,
         },
       });
 
-    await tx.auditLog.create({
-      data: {
-        action: 'PAYMENT_FAILED',
-        entity: 'PaymentTransaction',
-        entityId: payment.id,
-        metadata: {
-          donationId: payment.donationId,
-          campaignId: payment.donation.campaignId,
-          providerTransactionId:
-            providerTransactionId ?? null,
-          amount: payment.amount.toString(),
-          currency: payment.currency,
-        },
-      },
-    });
+    if (!payment) {
+      throw new NotFoundException('Payment not found');
+    }
 
-    return {
-      payment: updatedPayment,
-      donation: {
-        id: payment.donation.id,
-        status: payment.donation.status,
-      },
-    };
-  });
-}
+    if (payment.status === 'PAID') {
+      throw new BadRequestException(
+        'PAID payment cannot be marked as FAILED',
+      );
+    }
+
+    if (!['INITIATED', 'PENDING'].includes(payment.status)) {
+      throw new BadRequestException(
+        `Payment cannot be marked as FAILED from status: ${payment.status}`,
+      );
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const updatedPayment =
+        await tx.paymentTransaction.update({
+          where: {
+            id,
+          },
+          data: {
+            status: 'FAILED',
+            providerTransactionId,
+            rawResponse: rawResponse
+              ? (JSON.parse(
+                  JSON.stringify(rawResponse),
+                ) as Prisma.InputJsonValue)
+              : Prisma.JsonNull,
+          },
+        });
+
+      await tx.auditLog.create({
+        data: {
+          action: 'PAYMENT_FAILED',
+          entity: 'PaymentTransaction',
+          entityId: payment.id,
+          metadata: {
+            donationId: payment.donationId,
+            campaignId: payment.donation.campaignId,
+            providerTransactionId:
+              providerTransactionId ?? null,
+            amount: payment.amount.toString(),
+            currency: payment.currency,
+          },
+        },
+      });
+
+      return {
+        payment: updatedPayment,
+        donation: {
+          id: payment.donation.id,
+          status: payment.donation.status,
+        },
+      };
+    });
+  }
+
   async findAll() {
     return this.prisma.paymentTransaction.findMany({
       orderBy: {
@@ -363,26 +309,27 @@ export class PaymentService {
   }
 
   async findOne(id: string) {
-    const payment = await this.prisma.paymentTransaction.findUnique({
-      where: {
-        id,
-      },
-      include: {
-        donation: {
-          include: {
-            campaign: {
-              select: {
-                id: true,
-                title: true,
-                status: true,
+    const payment =
+      await this.prisma.paymentTransaction.findUnique({
+        where: {
+          id,
+        },
+        include: {
+          donation: {
+            include: {
+              campaign: {
+                select: {
+                  id: true,
+                  title: true,
+                  status: true,
+                },
               },
+              donorProfile: true,
+              impacts: true,
             },
-            donorProfile: true,
-            impacts: true,
           },
         },
-      },
-    });
+      });
 
     if (!payment) {
       throw new NotFoundException('Payment not found');
