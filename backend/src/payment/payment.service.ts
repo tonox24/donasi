@@ -99,10 +99,10 @@ export class PaymentService {
     return payment;
   }
   async markAsPaid(
-    id: string,
-    providerTransactionId: string,
-    rawResponse?: Record<string, unknown>,
-  ) {
+  id: string,
+  providerTransactionId: string,
+  rawResponse?: Prisma.InputJsonValue,
+) {
     const payment = await this.prisma.paymentTransaction.findUnique({
       where: {
         id,
