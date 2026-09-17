@@ -97,7 +97,115 @@ export class PaymentService {
 
     return payment;
   }
+  async markAsPaid(
+    id: string,
+    providerTransactionId: string,
+    rawResponse?: Record<string, unknown>,
+  ) {
+    const payment = await this.prisma.paymentTransaction.findUnique({
+      where: {
+        id,
+      },
+      include: {
+        donation: true,
+      },
+    });
 
+    if (!payment) {
+      throw new NotFoundException('Payment not found');
+    }
+
+    if (payment.status === 'PAID') {
+      throw new BadRequestException('Payment is already marked as PAID');
+    }
+
+    if (!['INITIATED', 'PENDING'].includes(payment.status)) {
+      throw new BadRequestException(
+        `Payment cannot be marked as PAID from status: ${payment.status}`,
+      );
+    }
+
+    if (payment.donation.status !== 'PENDING') {
+      throw new BadRequestException(
+        `Donation cannot be marked as PAID from status: ${payment.donation.status}`,
+      );
+    }
+
+    const paidAt = new Date();
+
+    return this.prisma.$transaction(async (tx) => {
+      const updatedPayment = await tx.paymentTransaction.update({
+        where: {
+          id,
+        },
+        data: {
+          status: 'PAID',
+          providerTransactionId,
+          paidAt,
+          rawResponse: rawResponse ?? undefined,
+        },
+      });
+
+      const updatedDonation = await tx.donation.update({
+        where: {
+          id: payment.donationId,
+        },
+        data: {
+          status: 'PAID',
+          paidAt,
+        },
+      });
+
+      const updatedCampaign = await tx.campaign.update({
+        where: {
+          id: payment.donation.campaignId,
+        },
+        data: {
+          collectedAmount: {
+            increment: payment.donation.amount,
+          },
+        },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          action: 'PAYMENT_PAID',
+          entity: 'PaymentTransaction',
+          entityId: payment.id,
+          metadata: {
+            donationId: payment.donationId,
+            campaignId: payment.donation.campaignId,
+            providerTransactionId,
+            amount: payment.amount.toString(),
+            currency: payment.currency,
+          },
+        },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          action: 'DONATION_PAID',
+          entity: 'Donation',
+          entityId: payment.donationId,
+          metadata: {
+            paymentId: payment.id,
+            campaignId: payment.donation.campaignId,
+            amount: payment.donation.amount.toString(),
+            currency: payment.donation.currency,
+          },
+        },
+      });
+
+      return {
+        payment: updatedPayment,
+        donation: updatedDonation,
+        campaign: {
+          id: updatedCampaign.id,
+          collectedAmount: updatedCampaign.collectedAmount,
+        },
+      };
+    });
+  }
   async findAll() {
     return this.prisma.paymentTransaction.findMany({
       orderBy: {
