@@ -79,7 +79,7 @@ export class PaymentService {
       await tx.auditLog.create({
         data: {
           action: 'PAYMENT_CREATED',
-          entityType: 'PaymentTransaction',
+          entity: 'PaymentTransaction',
           entityId: createdPayment.id,
           metadata: {
             donationId: donation.id,
