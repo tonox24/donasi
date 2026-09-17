@@ -3,6 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma.service';
 import { CreatePaymentDto } from './dto/create-payment.dto';
@@ -258,6 +259,74 @@ export class PaymentService {
           donationId: payment.donationId,
           campaignId: payment.donation.campaignId,
           providerTransactionId: providerTransactionId ?? null,
+          amount: payment.amount.toString(),
+          currency: payment.currency,
+        },
+      },
+    });
+
+    return {
+      payment: updatedPayment,
+      donation: {
+        id: payment.donation.id,
+        status: payment.donation.status,
+      },
+    };
+  });
+}
+  async markAsFailed(
+  id: string,
+  providerTransactionId?: string,
+  rawResponse?: Record<string, unknown>,
+) {
+  const payment = await this.prisma.paymentTransaction.findUnique({
+    where: {
+      id,
+    },
+    include: {
+      donation: true,
+    },
+  });
+
+  if (!payment) {
+    throw new NotFoundException('Payment not found');
+  }
+
+  if (payment.status === 'PAID') {
+    throw new BadRequestException(
+      'PAID payment cannot be marked as FAILED',
+    );
+  }
+
+  if (!['INITIATED', 'PENDING'].includes(payment.status)) {
+    throw new BadRequestException(
+      `Payment cannot be marked as FAILED from status: ${payment.status}`,
+    );
+  }
+
+  return this.prisma.$transaction(async (tx) => {
+    const updatedPayment =
+      await tx.paymentTransaction.update({
+        where: {
+          id,
+        },
+        data: {
+          status: 'FAILED',
+          providerTransactionId,
+          rawResponse: rawResponse ?? Prisma.JsonNull,
+        },
+      });
+
+    await tx.auditLog.create({
+      data: {
+        action: 'PAYMENT_FAILED',
+        entity: 'PaymentTransaction',
+        entityId: payment.id,
+        metadata: {
+          donationId: payment.donationId,
+          campaignId: payment.donation.campaignId,
+          providerTransactionId:
+            providerTransactionId ?? null,
           amount: payment.amount.toString(),
           currency: payment.currency,
         },
