@@ -11,6 +11,7 @@ import { PaymentService } from './payment.service';
 import { CreatePaymentDto } from './dto/create-payment.dto';
 import { MarkPaymentPaidDto } from './dto/mark-payment-paid.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { MarkPaymentFailedDto } from './dto/mark-payment-failed.dto';
 
 
 
@@ -49,6 +50,18 @@ export class PaymentController {
       dto.rawResponse,
     );
   }
+  @Post(':id/mark-failed')
+@UseGuards(JwtAuthGuard)
+markAsFailed(
+  @Param('id', new ParseUUIDPipe()) id: string,
+  @Body() dto: MarkPaymentFailedDto,
+) {
+  return this.paymentService.markAsFailed(
+    id,
+    dto.providerTransactionId,
+    dto.rawResponse,
+  );
+}
   @Get(':id')
   @UseGuards(JwtAuthGuard)
   findOne(@Param('id', new ParseUUIDPipe()) id: string) {
