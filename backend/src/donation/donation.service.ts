@@ -484,7 +484,7 @@ export class DonationService {
           },
         },
 
-        payment: {
+        payments: {
           orderBy: {
             createdAt: 'desc',
           },
