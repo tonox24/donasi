@@ -3,6 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma.service';
 import { CreatePaymentDto } from './dto/create-payment.dto';
 
@@ -142,7 +143,7 @@ export class PaymentService {
           status: 'PAID',
           providerTransactionId,
           paidAt,
-          rawResponse: rawResponse ?? undefined,
+          rawResponse: rawResponse ?? Prisma.JsonNull,
         },
       });
 
