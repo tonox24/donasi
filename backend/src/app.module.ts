@@ -10,6 +10,7 @@ import { CampaignModule } from './campaign/campaign.module';
 import { CampaignCategoryModule } from './campaign-category/campaign-category.module';
 import { BeneficiaryModule } from './beneficiary/beneficiary.module';
 import { DonationModule } from './donation/donation.module';
+import { PaymentModule } from './payment/payment.module';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { DonationModule } from './donation/donation.module';
     CampaignCategoryModule,
     BeneficiaryModule,
     DonationModule,
+    PaymentModule,
   ],
 
   controllers: [
