@@ -9,7 +9,10 @@ import {
 } from '@nestjs/common';
 import { PaymentService } from './payment.service';
 import { CreatePaymentDto } from './dto/create-payment.dto';
+import { MarkPaymentPaidDto } from './dto/mark-payment-paid.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+
+
 
 @Controller('payments')
 export class PaymentController {
@@ -34,7 +37,18 @@ export class PaymentController {
   ) {
     return this.paymentService.findByDonation(donationId);
   }
-
+  @Post(':id/mark-paid')
+  @UseGuards(JwtAuthGuard)
+  markAsPaid(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() dto: MarkPaymentPaidDto,
+  ) {
+    return this.paymentService.markAsPaid(
+      id,
+      dto.providerTransactionId,
+      dto.rawResponse,
+    );
+  }
   @Get(':id')
   @UseGuards(JwtAuthGuard)
   findOne(@Param('id', new ParseUUIDPipe()) id: string) {
