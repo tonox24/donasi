@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import {
   IsNotEmpty,
   IsOptional,
@@ -10,5 +11,5 @@ export class MarkPaymentPaidDto {
   providerTransactionId!: string;
 
   @IsOptional()
-  rawResponse?: Record<string, unknown>;
+  rawResponse?: Prisma.InputJsonValue;
 }
