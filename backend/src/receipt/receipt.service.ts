@@ -4,8 +4,10 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 
+import PDFDocument from 'pdfkit';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma.service';
+
 
 type TransactionClient = Prisma.TransactionClient;
 
@@ -347,5 +349,273 @@ export class ReceiptService {
     }
 
     return receipt;
+  }
+    /**
+   * Generate PDF receipt.
+   *
+   * This method only reads an existing receipt.
+   * It does not create or modify any receipt.
+   */
+  async generatePdf(id: string): Promise<Buffer> {
+    const receipt = await this.findOne(id);
+
+    return new Promise<Buffer>((resolve, reject) => {
+      const doc = new PDFDocument({
+        size: 'A4',
+        margin: 50,
+        info: {
+          Title: `Donation Receipt ${receipt.receiptNumber}`,
+          Author: 'Islamic Relief Indonesia',
+          Subject: 'Donation Receipt',
+        },
+      });
+
+      const chunks: Buffer[] = [];
+
+      doc.on('data', (chunk: Buffer) => {
+        chunks.push(chunk);
+      });
+
+      doc.on('end', () => {
+        resolve(Buffer.concat(chunks));
+      });
+
+      doc.on('error', (error) => {
+        reject(error);
+      });
+
+      const formatDate = (date: Date) => {
+        return new Intl.DateTimeFormat('id-ID', {
+          day: '2-digit',
+          month: 'long',
+          year: 'numeric',
+          timeZone: 'Asia/Jakarta',
+        }).format(date);
+      };
+
+      const formatDateTime = (date: Date) => {
+        return new Intl.DateTimeFormat('id-ID', {
+          day: '2-digit',
+          month: 'long',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+          timeZone: 'Asia/Jakarta',
+        }).format(date);
+      };
+
+      const formatAmount = (amount: Prisma.Decimal | number | string) => {
+        const numericAmount = Number(amount);
+
+        return new Intl.NumberFormat('id-ID', {
+          minimumFractionDigits: 0,
+          maximumFractionDigits: 2,
+        }).format(numericAmount);
+      };
+
+      const drawLine = () => {
+        doc
+          .moveTo(50, doc.y)
+          .lineTo(545, doc.y)
+          .stroke();
+      };
+
+      /*
+       * Header
+       */
+      doc
+        .font('Helvetica-Bold')
+        .fontSize(20)
+        .text('ISLAMIC RELIEF INDONESIA', {
+          align: 'center',
+        });
+
+      doc
+        .moveDown(0.3)
+        .font('Helvetica')
+        .fontSize(10)
+        .text('DONATION RECEIPT', {
+          align: 'center',
+        });
+
+      doc.moveDown(1);
+
+      drawLine();
+
+      /*
+       * Receipt information
+       */
+      doc.moveDown(0.8);
+
+      doc
+        .font('Helvetica-Bold')
+        .fontSize(11)
+        .text('RECEIPT INFORMATION');
+
+      doc.moveDown(0.5);
+
+      doc.font('Helvetica').fontSize(10);
+
+      doc.text(`Receipt Number : ${receipt.receiptNumber}`);
+      doc.text(`Issued Date   : ${formatDate(receipt.issuedAt)}`);
+
+      doc.moveDown(0.8);
+
+      drawLine();
+
+      /*
+       * Donor information
+       */
+      doc.moveDown(0.8);
+
+      doc
+        .font('Helvetica-Bold')
+        .fontSize(11)
+        .text('DONOR INFORMATION');
+
+      doc.moveDown(0.5);
+
+      doc.font('Helvetica').fontSize(10);
+
+      doc.text(`Name          : ${receipt.donorName}`);
+
+      if (receipt.donorEmail) {
+        doc.text(`Email         : ${receipt.donorEmail}`);
+      }
+
+      if (receipt.donation?.donorPhone) {
+        doc.text(`Phone         : ${receipt.donation.donorPhone}`);
+      }
+
+      doc.moveDown(0.8);
+
+      drawLine();
+
+      /*
+       * Donation information
+       */
+      doc.moveDown(0.8);
+
+      doc
+        .font('Helvetica-Bold')
+        .fontSize(11)
+        .text('DONATION DETAILS');
+
+      doc.moveDown(0.5);
+
+      doc.font('Helvetica').fontSize(10);
+
+      doc.text(`Campaign      : ${receipt.campaignTitle}`);
+
+      doc.text(
+        `Amount        : ${receipt.currency} ${formatAmount(receipt.amount)}`,
+      );
+
+      doc.text(`Status        : ${receipt.donation?.status ?? 'PAID'}`);
+
+      if (receipt.donation?.paidAt) {
+        doc.text(
+          `Paid Date     : ${formatDateTime(receipt.donation.paidAt)}`,
+        );
+      } else {
+        doc.text(`Paid Date     : ${formatDateTime(receipt.issuedAt)}`);
+      }
+
+      if (receipt.donation?.message) {
+        doc.moveDown(0.5);
+
+        doc
+          .font('Helvetica-Bold')
+          .text('Donor Message');
+
+        doc
+          .font('Helvetica')
+          .text(receipt.donation.message, {
+            width: 495,
+          });
+      }
+
+      doc.moveDown(1);
+
+      drawLine();
+
+      /*
+       * Payment confirmation
+       */
+      doc.moveDown(0.8);
+
+      doc
+        .font('Helvetica-Bold')
+        .fontSize(11)
+        .text('PAYMENT CONFIRMATION');
+
+      doc.moveDown(0.5);
+
+      doc
+        .font('Helvetica')
+        .fontSize(10)
+        .text(
+          'This receipt confirms that the donation stated above has been successfully received.',
+          {
+            width: 495,
+            align: 'left',
+          },
+        );
+
+      doc.moveDown(1.5);
+
+      /*
+       * Thank you message
+       */
+      doc
+        .font('Helvetica-Bold')
+        .fontSize(12)
+        .text('Thank You for Your Generosity', {
+          align: 'center',
+        });
+
+      doc.moveDown(0.5);
+
+      doc
+        .font('Helvetica')
+        .fontSize(10)
+        .text(
+          'Your contribution supports Islamic Relief Indonesia in creating meaningful and sustainable impact for communities in need.',
+          {
+            width: 495,
+            align: 'center',
+          },
+        );
+
+      /*
+       * Footer
+       */
+      doc.moveDown(2);
+
+      drawLine();
+
+      doc.moveDown(0.5);
+
+      doc
+        .font('Helvetica')
+        .fontSize(8)
+        .text(
+          'This document was generated electronically by the Islamic Relief Indonesia Digital Philanthropy Platform.',
+          {
+            align: 'center',
+          },
+        );
+
+      doc
+        .moveDown(0.3)
+        .text(
+          `Receipt ID: ${receipt.id}`,
+          {
+            align: 'center',
+          },
+        );
+
+      doc.end();
+    });
   }
 }
