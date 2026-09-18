@@ -4,69 +4,94 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 
-import { Prisma, PrismaClient } from '@prisma/client';
-import { PrismaService } from '../prisma.service';
+import { Prisma } from '@prisma/client';
 
-type TransactionClient = Omit<
-  PrismaClient,
-  '$connect' | '$disconnect' | '$on' | '$transaction' | '$extends'
->;
+import { PrismaService } from '../prisma.service';
 
 @Injectable()
 export class ReceiptService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+  ) {}
 
   /**
-   * Generate receipt number:
+   * Generate receipt number.
+   *
+   * Format:
    *
    * INV-YRII/YYMMDD/YYYY/000001
    *
    * Example:
+   *
    * INV-YRII/260918/2026/000001
    */
   private async generateReceiptNumber(
-    tx: TransactionClient,
+    tx: Prisma.TransactionClient,
     issuedAt: Date,
   ): Promise<string> {
-    const dateParts = new Intl.DateTimeFormat('en-GB', {
-      timeZone: 'Asia/Jakarta',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    }).formatToParts(issuedAt);
+    const dateParts =
+      new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'Asia/Jakarta',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).formatToParts(issuedAt);
 
     const year = Number(
-      dateParts.find((part) => part.type === 'year')?.value,
+      dateParts.find(
+        (part) => part.type === 'year',
+      )?.value,
     );
 
     const month =
-      dateParts.find((part) => part.type === 'month')?.value ?? '01';
+      dateParts.find(
+        (part) => part.type === 'month',
+      )?.value ?? '01';
 
     const day =
-      dateParts.find((part) => part.type === 'day')?.value ?? '01';
+      dateParts.find(
+        (part) => part.type === 'day',
+      )?.value ?? '01';
+
+    if (!year) {
+      throw new BadRequestException(
+        'Unable to determine receipt year',
+      );
+    }
 
     /**
-     * Atomic PostgreSQL upsert.
+     * Atomic sequence generation.
      *
-     * If the year does not exist:
-     *   create year with lastNumber = 1
+     * First receipt:
+     * 000001
      *
-     * If the year already exists:
-     *   increment lastNumber atomically
+     * Second receipt:
+     * 000002
+     *
+     * etc.
      */
-    const result = await tx.$queryRaw<Array<{ lastNumber: number }>>(
-      Prisma.sql`
-        INSERT INTO "ReceiptSequence" ("year", "lastNumber", "updatedAt")
-        VALUES (${year}, 1, NOW())
-        ON CONFLICT ("year")
-        DO UPDATE SET
-          "lastNumber" = "ReceiptSequence"."lastNumber" + 1,
-          "updatedAt" = NOW()
-        RETURNING "lastNumber";
-      `,
-    );
+    const result =
+      await tx.$queryRaw<
+        Array<{ lastNumber: number }>
+      >(
+        Prisma.sql`
+          INSERT INTO "ReceiptSequence"
+            ("year", "lastNumber", "updatedAt")
+          VALUES
+            (${year}, 1, NOW())
 
-    const sequence = result[0]?.lastNumber;
+          ON CONFLICT ("year")
+          DO UPDATE SET
+            "lastNumber" =
+              "ReceiptSequence"."lastNumber" + 1,
+            "updatedAt" = NOW()
+
+          RETURNING "lastNumber";
+        `,
+      );
+
+    const sequence =
+      result[0]?.lastNumber;
 
     if (!sequence) {
       throw new BadRequestException(
@@ -74,7 +99,8 @@ export class ReceiptService {
       );
     }
 
-    const sequenceNumber = String(sequence).padStart(6, '0');
+    const sequenceNumber =
+      String(sequence).padStart(6, '0');
 
     return `INV-YRII/${String(year).slice(-2)}${month}${day}/${year}/${sequenceNumber}`;
   }
@@ -82,31 +108,38 @@ export class ReceiptService {
   /**
    * Create receipt for a PAID donation.
    *
-   * This method is intended to be called inside
-   * the same database transaction as payment settlement.
+   * This method is called from the same
+   * database transaction as payment settlement.
    */
   async createForPaidDonation(
     donationId: string,
-    tx: TransactionClient = this.prisma,
+    tx: Prisma.TransactionClient = this.prisma,
   ) {
-    const donation = await tx.donation.findUnique({
-      where: {
-        id: donationId,
-      },
-      include: {
-        campaign: {
-          select: {
-            id: true,
-            title: true,
+    const donation =
+      await tx.donation.findUnique({
+        where: {
+          id: donationId,
+        },
+
+        include: {
+          campaign: {
+            select: {
+              id: true,
+              title: true,
+            },
           },
         },
-      },
-    });
+      });
 
     if (!donation) {
-      throw new NotFoundException('Donation not found');
+      throw new NotFoundException(
+        'Donation not found',
+      );
     }
 
+    /**
+     * Receipt only for PAID donation.
+     */
     if (donation.status !== 'PAID') {
       throw new BadRequestException(
         `Receipt can only be created for PAID donations. Current status: ${donation.status}`,
@@ -114,53 +147,89 @@ export class ReceiptService {
     }
 
     /**
-     * Prevent duplicate receipt.
+     * One donation = one receipt.
+     *
+     * donationId is UNIQUE in database.
      */
-    const existingReceipt = await tx.receipt.findFirst({
-      where: {
-        donationId,
-      },
-    });
+    const existingReceipt =
+      await tx.receipt.findUnique({
+        where: {
+          donationId,
+        },
+      });
 
     if (existingReceipt) {
       return existingReceipt;
     }
 
-    const issuedAt = donation.paidAt ?? new Date();
+    const issuedAt =
+      donation.paidAt ?? new Date();
 
-    const receiptNumber = await this.generateReceiptNumber(
-      tx,
-      issuedAt,
-    );
-
-    const receipt = await tx.receipt.create({
-      data: {
-        donationId: donation.id,
-        receiptNumber,
+    const receiptNumber =
+      await this.generateReceiptNumber(
+        tx,
         issuedAt,
+      );
 
-        donorName: donation.donorName,
-        donorEmail: donation.donorEmail,
+    const receipt =
+      await tx.receipt.create({
+        data: {
+          donationId:
+            donation.id,
 
-        amount: donation.amount,
-        currency: donation.currency,
+          receiptNumber,
 
-        campaignId: donation.campaign.id,
-        campaignTitle: donation.campaign.title,
-      },
-    });
+          issuedAt,
 
+          donorName:
+            donation.donorName,
+
+          donorEmail:
+            donation.donorEmail,
+
+          amount:
+            donation.amount,
+
+          currency:
+            donation.currency,
+
+          campaignId:
+            donation.campaign.id,
+
+          campaignTitle:
+            donation.campaign.title,
+        },
+      });
+
+    /**
+     * Audit log.
+     */
     await tx.auditLog.create({
       data: {
-        action: 'RECEIPT_CREATED',
-        entity: 'Receipt',
-        entityId: receipt.id,
+        action:
+          'RECEIPT_CREATED',
+
+        entity:
+          'Receipt',
+
+        entityId:
+          receipt.id,
+
         metadata: {
-          receiptNumber: receipt.receiptNumber,
-          donationId: donation.id,
-          campaignId: donation.campaign.id,
-          amount: donation.amount.toString(),
-          currency: donation.currency,
+          receiptNumber:
+            receipt.receiptNumber,
+
+          donationId:
+            donation.id,
+
+          campaignId:
+            donation.campaign.id,
+
+          amount:
+            donation.amount.toString(),
+
+          currency:
+            donation.currency,
         },
       },
     });
@@ -168,6 +237,9 @@ export class ReceiptService {
     return receipt;
   }
 
+  /**
+   * Get all receipts.
+   */
   async findAll() {
     return this.prisma.receipt.findMany({
       orderBy: {
@@ -176,88 +248,126 @@ export class ReceiptService {
     });
   }
 
+  /**
+   * Get receipt by ID.
+   */
   async findOne(id: string) {
-    const receipt = await this.prisma.receipt.findUnique({
-      where: {
-        id,
-      },
-      include: {
-        donation: {
-          include: {
-            campaign: {
-              select: {
-                id: true,
-                title: true,
-                slug: true,
+    const receipt =
+      await this.prisma.receipt.findUnique({
+        where: {
+          id,
+        },
+
+        include: {
+          donation: {
+            include: {
+              campaign: {
+                select: {
+                  id: true,
+                  title: true,
+                  slug: true,
+                  status: true,
+                },
               },
-            },
-            donorProfile: true,
-            payments: {
-              orderBy: {
-                createdAt: 'desc',
+
+              donorProfile: true,
+
+              payments: {
+                orderBy: {
+                  createdAt: 'desc',
+                },
               },
-            },
-            impacts: {
-              include: {
-                campaignImpact: true,
+
+              impacts: {
+                include: {
+                  campaignImpact: true,
+                },
               },
             },
           },
         },
-      },
-    });
+      });
 
     if (!receipt) {
-      throw new NotFoundException('Receipt not found');
+      throw new NotFoundException(
+        'Receipt not found',
+      );
     }
 
     return receipt;
   }
 
-  async findByDonation(donationId: string) {
-    const donation = await this.prisma.donation.findUnique({
-      where: {
-        id: donationId,
-      },
-    });
+  /**
+   * Get receipt by donation.
+   */
+  async findByDonation(
+    donationId: string,
+  ) {
+    const donation =
+      await this.prisma.donation.findUnique({
+        where: {
+          id: donationId,
+        },
+      });
 
     if (!donation) {
-      throw new NotFoundException('Donation not found');
+      throw new NotFoundException(
+        'Donation not found',
+      );
     }
 
     return this.prisma.receipt.findMany({
       where: {
         donationId,
       },
+
       orderBy: {
         issuedAt: 'desc',
       },
     });
   }
 
-  async findByReceiptNumber(receiptNumber: string) {
-    const receipt = await this.prisma.receipt.findUnique({
-      where: {
-        receiptNumber,
-      },
-      include: {
-        donation: {
-          include: {
-            campaign: {
-              select: {
-                id: true,
-                title: true,
-                slug: true,
+  /**
+   * Get receipt by receipt number.
+   */
+  async findByReceiptNumber(
+    receiptNumber: string,
+  ) {
+    if (!receiptNumber?.trim()) {
+      throw new BadRequestException(
+        'Receipt number is required',
+      );
+    }
+
+    const receipt =
+      await this.prisma.receipt.findUnique({
+        where: {
+          receiptNumber:
+            receiptNumber.trim(),
+        },
+
+        include: {
+          donation: {
+            include: {
+              campaign: {
+                select: {
+                  id: true,
+                  title: true,
+                  slug: true,
+                  status: true,
+                },
               },
+
+              donorProfile: true,
             },
-            donorProfile: true,
           },
         },
-      },
-    });
+      });
 
     if (!receipt) {
-      throw new NotFoundException('Receipt not found');
+      throw new NotFoundException(
+        'Receipt not found',
+      );
     }
 
     return receipt;
