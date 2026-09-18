@@ -2,9 +2,11 @@ import {
   BadRequestException,
   Controller,
   Get,
+  Header,
   Param,
   ParseUUIDPipe,
   Query,
+  StreamableFile,
   UseGuards,
 } from '@nestjs/common';
 
@@ -53,6 +55,27 @@ export class ReceiptController {
     );
   }
 
+    @Get(':id/pdf')
+  @UseGuards(JwtAuthGuard)
+  @Header('Content-Type', 'application/pdf')
+  getPdf(
+    @Param(
+      'id',
+      new ParseUUIDPipe(),
+    )
+    id: string,
+  ) {
+    return this.receiptService
+      .generatePdf(id)
+      .then(
+        (pdfBuffer) =>
+          new StreamableFile(pdfBuffer, {
+            type: 'application/pdf',
+            disposition: 'attachment',
+          }),
+      );
+  }
+
   @Get(':id')
   @UseGuards(JwtAuthGuard)
   findOne(
@@ -64,4 +87,3 @@ export class ReceiptController {
   ) {
     return this.receiptService.findOne(id);
   }
-}
