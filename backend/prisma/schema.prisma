@@ -532,9 +532,11 @@ model DonationImpact {
   @@index([donationId])
   @@index([campaignImpactId])
 }
-/* --------------------------------------------------------------------------
+/*
+|--------------------------------------------------------------------------
 | RECEIPT / KUITANSI
-|-------------------------------------------------------------------------- */
+|--------------------------------------------------------------------------
+*/
 
 model Receipt {
   id String @id @default(uuid())
@@ -570,17 +572,6 @@ model Receipt {
 model ReceiptSequence {
   year Int @id
 
-  lastNumber Int @default(0)
-
-  updatedAt DateTime @updatedAt
-}
-
-/* --------------------------------------------------------------------------
-| RECEIPT NUMBER SEQUENCE
-|-------------------------------------------------------------------------- */
-
-model ReceiptSequence {
-  year       Int @id
   lastNumber Int @default(0)
 
   updatedAt DateTime @updatedAt
