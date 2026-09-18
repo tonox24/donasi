@@ -11,6 +11,7 @@ import { CampaignCategoryModule } from './campaign-category/campaign-category.mo
 import { BeneficiaryModule } from './beneficiary/beneficiary.module';
 import { DonationModule } from './donation/donation.module';
 import { PaymentModule } from './payment/payment.module';
+import { ReceiptModule } from './receipt/receipt.module';
 
 @Module({
   imports: [
@@ -33,6 +34,8 @@ import { PaymentModule } from './payment/payment.module';
     BeneficiaryModule,
     DonationModule,
     PaymentModule,
+    ReceiptModule,
+
   ],
 
   controllers: [
