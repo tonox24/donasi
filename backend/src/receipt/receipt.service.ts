@@ -10,6 +10,7 @@ import QRCode from 'qrcode';
 import PDFDocument from 'pdfkit';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma.service';
+import * as path from 'path';
 
 
 
@@ -453,7 +454,12 @@ private getLogoPath(): string {
 
     const qrBuffer =
       Buffer.from(qrBase64, 'base64');
-
+    
+const logoPath = path.join(
+  process.cwd(),
+  'assets',
+  'islamic-relief-logo.png',
+);
     return new Promise<Buffer>((resolve, reject) => {
       const doc = new PDFDocument({
         size: 'A4',
@@ -518,21 +524,47 @@ private getLogoPath(): string {
       /*
        * Header
        */
-      doc
-        .font('Helvetica-Bold')
-        .fontSize(20)
-        .text('ISLAMIC RELIEF INDONESIA', {
-          align: 'center',
-        });
+     /*
+ * Header
+ */
 
-      doc
-        .moveDown(0.3)
-        .font('Helvetica')
-        .fontSize(10)
-        .text('DONATION RECEIPT', {
-          align: 'center',
-        });
+// Logo
+doc.image(logoPath, 50, 45, {
+  fit: [80, 80],
+  align: 'left',
+});
 
+// Organization name
+doc
+  .font('Helvetica-Bold')
+  .fontSize(18)
+  .text(
+    'ISLAMIC RELIEF INDONESIA',
+    145,
+    55,
+    {
+      width: 350,
+      align: 'center',
+    },
+  );
+
+// Receipt title
+doc
+  .font('Helvetica')
+  .fontSize(10)
+  .text(
+    'DONATION RECEIPT',
+    145,
+    80,
+    {
+      width: 350,
+      align: 'center',
+    },
+  );
+
+doc.y = 135;
+
+drawLine();
       doc.moveDown(1);
 
       drawLine();
@@ -603,9 +635,8 @@ private getLogoPath(): string {
         receipt.donation?.impacts &&
         receipt.donation.impacts.length > 0
       ) {
-        doc.moveDown(1);
+        
 
-        drawLine();
 
         doc.moveDown(0.8);
 
