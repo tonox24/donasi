@@ -13,6 +13,22 @@ enum UserStatus {
   SUSPENDED
 }
 
+enum DonorType {
+  INDIVIDUAL
+  CORPORATE
+  COMMUNITY
+  FOUNDATION
+  INSTITUTION
+  PARTNER
+  OTHER
+}
+
+enum DonorStatus {
+  ACTIVE
+  INACTIVE
+  BLOCKED
+}
+
 enum RoleName {
   SUPER_ADMIN
   ADMIN
@@ -370,26 +386,34 @@ model CampaignBeneficiary {
 */
 
 model DonorProfile {
-  id     String  @id @default(uuid())
-  userId String? @unique
+  id        String  @id @default(uuid())
+  userId    String? @unique
 
-  fullName String
-  email    String?
-  phone    String?
-  address  String?
-  city     String?
-  country  String?
+  fullName  String
+  email     String?
+  phone     String?
+
+  address   String?
+  city      String?
+  country   String?
+
+  donorType   DonorType   @default(INDIVIDUAL)
+  status      DonorStatus @default(ACTIVE)
 
   isAnonymous Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user      User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
+  user     User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
   donations Donation[]
 
   @@index([email])
   @@index([phone])
+  @@index([fullName])
+  @@index([donorType])
+  @@index([status])
+  @@index([createdAt])
 }
 
 /*
