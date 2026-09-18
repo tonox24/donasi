@@ -1,8 +1,10 @@
 import {
+  BadRequestException,
   Controller,
   Get,
   Param,
   ParseUUIDPipe,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 
@@ -15,36 +17,62 @@ export class ReceiptController {
     private readonly receiptService: ReceiptService,
   ) {}
 
+  /**
+   * GET /api/receipts
+   */
   @Get()
   @UseGuards(JwtAuthGuard)
   findAll() {
     return this.receiptService.findAll();
   }
 
+  /**
+   * GET /api/receipts/donation/:donationId
+   */
   @Get('donation/:donationId')
   @UseGuards(JwtAuthGuard)
   findByDonation(
-    @Param('donationId', new ParseUUIDPipe())
+    @Param(
+      'donationId',
+      new ParseUUIDPipe(),
+    )
     donationId: string,
   ) {
-    return this.receiptService.findByDonation(donationId);
+    return this.receiptService.findByDonation(
+      donationId,
+    );
   }
 
-  @Get('number/:receiptNumber')
+  /**
+   * GET /api/receipts/search?receiptNumber=...
+   */
+  @Get('search')
   @UseGuards(JwtAuthGuard)
   findByReceiptNumber(
-    @Param('receiptNumber')
+    @Query('receiptNumber')
     receiptNumber: string,
   ) {
+    if (!receiptNumber?.trim()) {
+      throw new BadRequestException(
+        'receiptNumber query parameter is required',
+      );
+    }
+
     return this.receiptService.findByReceiptNumber(
       receiptNumber,
     );
   }
 
+  /**
+   * GET /api/receipts/:id
+   */
   @Get(':id')
   @UseGuards(JwtAuthGuard)
   findOne(
-    @Param('id', new ParseUUIDPipe())
+    @Param(
+      'id',
+      new ParseUUIDPipe(),
+    )
     id: string,
   ) {
     return this.receiptService.findOne(id);
