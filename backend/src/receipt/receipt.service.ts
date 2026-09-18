@@ -3,228 +3,109 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-
-import * as fs from 'fs';
-import QRCode from 'qrcode';
-import PDFDocument from 'pdfkit';
 import { Prisma } from '@prisma/client';
-import { PrismaService } from '../prisma.service';
+import PDFDocument from 'pdfkit';
+import QRCode from 'qrcode';
+import * as fs from 'fs';
 import * as path from 'path';
+
+import { PrismaService } from '../prisma.service';
 
 type TransactionClient = Prisma.TransactionClient;
 
 @Injectable()
 export class ReceiptService {
-  constructor(
-    private readonly prisma: PrismaService,
-  ) {}
-private getLogoBuffer(): Buffer {
-    const logoPath = path.join(
-      process.cwd(),
-      'assets',
-      'islamic-relief-logo.png',
+  constructor(private readonly prisma: PrismaService) {}
+
+  private async generateReceiptNumber(
+    tx: TransactionClient,
+    issuedAt: Date,
+  ): Promise<string> {
+    const dateParts = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Asia/Jakarta',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(issuedAt);
+
+    const year = Number(
+      dateParts.find((part) => part.type === 'year')?.value,
     );
+    const month =
+      dateParts.find((part) => part.type === 'month')?.value ?? '01';
+    const day =
+      dateParts.find((part) => part.type === 'day')?.value ?? '01';
 
-    if (!fs.existsSync(logoPath)) {
-      throw new Error(
-        `Receipt logo not found: ${logoPath}`,
-      );
-    }
+    const sequence = await tx.receiptSequence.upsert({
+      where: { year },
+      create: { year, lastNumber: 1 },
+      update: { lastNumber: { increment: 1 } },
+    });
 
-    return fs.readFileSync(logoPath);
+    return `INV-YRII/${String(year).slice(-2)}${month}${day}/${year}/${String(
+      sequence.lastNumber,
+    ).padStart(6, '0')}`;
   }
 
-  /**
-   * Generate receipt number.
-   *
-   * Format:
-   *
-   * INV-YRII/YYMMDD/YYYY/000001
-   *
-   * Example:
-   *
-   * INV-YRII/260918/2026/000001
-   */
- private async generateReceiptNumber(
-  tx: TransactionClient,
-  issuedAt: Date,
-): Promise<string> {
-  const dateParts = new Intl.DateTimeFormat('en-GB', {
-    timeZone: 'Asia/Jakarta',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).formatToParts(issuedAt);
-
-  const year = Number(
-    dateParts.find((part) => part.type === 'year')?.value,
-  );
-
-  const month =
-    dateParts.find((part) => part.type === 'month')?.value ?? '01';
-
-  const day =
-    dateParts.find((part) => part.type === 'day')?.value ?? '01';
-
-  /**
-   * Atomic yearly sequence.
-   *
-   * First receipt of the year:
-   *   1
-   *
-   * Next receipt:
-   *   2
-   *
-   * The increment is performed by PostgreSQL through
-   * Prisma's atomic increment operation.
-   */
-  const sequence = await tx.receiptSequence.upsert({
-    where: {
-      year,
-    },
-    create: {
-      year,
-      lastNumber: 1,
-    },
-    update: {
-      lastNumber: {
-        increment: 1,
-      },
-    },
-  });
-
-  const sequenceNumber = String(sequence.lastNumber).padStart(
-    6,
-    '0',
-  );
-
-  return `INV-YRII/${String(year).slice(-2)}${month}${day}/${year}/${sequenceNumber}`;
-}
-  /**
-   * Create receipt for a PAID donation.
-   *
-   * This method is called from the same
-   * database transaction as payment settlement.
-   */
   async createForPaidDonation(
     donationId: string,
     tx: Prisma.TransactionClient = this.prisma,
   ) {
-    const donation =
-      await tx.donation.findUnique({
-        where: {
-          id: donationId,
+    const donation = await tx.donation.findUnique({
+      where: { id: donationId },
+      include: {
+        campaign: {
+          select: { id: true, title: true },
         },
-
-        include: {
-          campaign: {
-            select: {
-              id: true,
-              title: true,
-            },
-          },
-        },
-      });
+      },
+    });
 
     if (!donation) {
-      throw new NotFoundException(
-        'Donation not found',
-      );
+      throw new NotFoundException('Donation not found');
     }
 
-    /**
-     * Receipt only for PAID donation.
-     */
     if (donation.status !== 'PAID') {
       throw new BadRequestException(
         `Receipt can only be created for PAID donations. Current status: ${donation.status}`,
       );
     }
 
-    /**
-     * One donation = one receipt.
-     *
-     * donationId is UNIQUE in database.
-     */
-    const existingReceipt =
-      await tx.receipt.findUnique({
-        where: {
-          donationId,
-        },
-      });
+    const existingReceipt = await tx.receipt.findUnique({
+      where: { donationId },
+    });
 
     if (existingReceipt) {
       return existingReceipt;
     }
 
-    const issuedAt =
-      donation.paidAt ?? new Date();
+    const issuedAt = donation.paidAt ?? new Date();
+    const receiptNumber = await this.generateReceiptNumber(tx, issuedAt);
 
-    const receiptNumber =
-      await this.generateReceiptNumber(
-        tx,
+    const receipt = await tx.receipt.create({
+      data: {
+        donationId: donation.id,
+        receiptNumber,
         issuedAt,
-      );
+        donorName: donation.donorName,
+        donorEmail: donation.donorEmail,
+        amount: donation.amount,
+        currency: donation.currency,
+        campaignId: donation.campaign.id,
+        campaignTitle: donation.campaign.title,
+      },
+    });
 
-    const receipt =
-      await tx.receipt.create({
-        data: {
-          donationId:
-            donation.id,
-
-          receiptNumber,
-
-          issuedAt,
-
-          donorName:
-            donation.donorName,
-
-          donorEmail:
-            donation.donorEmail,
-
-          amount:
-            donation.amount,
-
-          currency:
-            donation.currency,
-
-          campaignId:
-            donation.campaign.id,
-
-          campaignTitle:
-            donation.campaign.title,
-        },
-      });
-
-    /**
-     * Audit log.
-     */
     await tx.auditLog.create({
       data: {
-        action:
-          'RECEIPT_CREATED',
-
-        entity:
-          'Receipt',
-
-        entityId:
-          receipt.id,
-
+        action: 'RECEIPT_CREATED',
+        entity: 'Receipt',
+        entityId: receipt.id,
         metadata: {
-          receiptNumber:
-            receipt.receiptNumber,
-
-          donationId:
-            donation.id,
-
-          campaignId:
-            donation.campaign.id,
-
-          amount:
-            donation.amount.toString(),
-
-          currency:
-            donation.currency,
+          receiptNumber: receipt.receiptNumber,
+          donationId: donation.id,
+          campaignId: donation.campaign.id,
+          amount: donation.amount.toString(),
+          currency: donation.currency,
         },
       },
     });
@@ -232,211 +113,112 @@ private getLogoBuffer(): Buffer {
     return receipt;
   }
 
-  /**
-   * Get all receipts.
-   */
   async findAll() {
     return this.prisma.receipt.findMany({
-      orderBy: {
-        issuedAt: 'desc',
-      },
+      orderBy: { issuedAt: 'desc' },
     });
   }
 
-  /**
-   * Get receipt by ID.
-   */
   async findOne(id: string) {
-    const receipt =
-      await this.prisma.receipt.findUnique({
-        where: {
-          id,
-        },
-
-        include: {
-          donation: {
-            include: {
-              campaign: {
-                select: {
-                  id: true,
-                  title: true,
-                  slug: true,
-                  status: true,
-                },
+    const receipt = await this.prisma.receipt.findUnique({
+      where: { id },
+      include: {
+        donation: {
+          include: {
+            campaign: {
+              select: {
+                id: true,
+                title: true,
+                slug: true,
+                status: true,
               },
-
-              donorProfile: true,
-
-              payments: {
-                orderBy: {
-                  createdAt: 'desc',
-                },
-              },
-
-              impacts: {
-                include: {
-                  campaignImpact: true,
-                },
+            },
+            donorProfile: true,
+            payments: {
+              orderBy: { createdAt: 'desc' },
+            },
+            impacts: {
+              include: {
+                campaignImpact: true,
               },
             },
           },
         },
-      });
+      },
+    });
 
     if (!receipt) {
-      throw new NotFoundException(
-        'Receipt not found',
-      );
+      throw new NotFoundException('Receipt not found');
     }
 
     return receipt;
   }
 
-  /**
-   * Get receipt by donation.
-   */
-  async findByDonation(
-    donationId: string,
-  ) {
-    const donation =
-      await this.prisma.donation.findUnique({
-        where: {
-          id: donationId,
-        },
-      });
+  async findByDonation(donationId: string) {
+    const donation = await this.prisma.donation.findUnique({
+      where: { id: donationId },
+    });
 
     if (!donation) {
-      throw new NotFoundException(
-        'Donation not found',
-      );
+      throw new NotFoundException('Donation not found');
     }
 
     return this.prisma.receipt.findMany({
-      where: {
-        donationId,
-      },
-
-      orderBy: {
-        issuedAt: 'desc',
-      },
+      where: { donationId },
+      orderBy: { issuedAt: 'desc' },
     });
   }
 
-  /**
-   * Get receipt by receipt number.
-   */
-  async findByReceiptNumber(
-    receiptNumber: string,
-  ) {
+  async findByReceiptNumber(receiptNumber: string) {
     if (!receiptNumber?.trim()) {
-      throw new BadRequestException(
-        'Receipt number is required',
-      );
+      throw new BadRequestException('Receipt number is required');
     }
 
-    const receipt =
-      await this.prisma.receipt.findUnique({
-        where: {
-          receiptNumber:
-            receiptNumber.trim(),
-        },
-
-        include: {
-          donation: {
-            include: {
-              campaign: {
-                select: {
-                  id: true,
-                  title: true,
-                  slug: true,
-                  status: true,
-                },
+    const receipt = await this.prisma.receipt.findUnique({
+      where: { receiptNumber: receiptNumber.trim() },
+      include: {
+        donation: {
+          include: {
+            campaign: {
+              select: {
+                id: true,
+                title: true,
+                slug: true,
+                status: true,
               },
-
-              donorProfile: true,
             },
+            donorProfile: true,
           },
         },
-      });
+      },
+    });
 
     if (!receipt) {
-      throw new NotFoundException(
-        'Receipt not found',
-      );
+      throw new NotFoundException('Receipt not found');
     }
 
     return receipt;
   }
-    /**
-   * Public receipt verification.
+
+  /**
+   * Generate a professional A4 donation receipt.
    *
-   * This endpoint intentionally returns limited information.
-   * It does not expose donor email, phone, payment details,
-   * donor profile, or internal database information.
-   */
-  async verifyReceipt(receiptNumber: string) {
-    if (!receiptNumber?.trim()) {
-      throw new BadRequestException(
-        'Receipt number is required',
-      );
-    }
-
-    const receipt =
-      await this.prisma.receipt.findUnique({
-        where: {
-          receiptNumber: receiptNumber.trim(),
-        },
-        select: {
-          receiptNumber: true,
-          issuedAt: true,
-          donorName: true,
-          amount: true,
-          currency: true,
-          campaignTitle: true,
-          donation: {
-            select: {
-              status: true,
-              paidAt: true,
-            },
-          },
-        },
-      });
-
-    if (!receipt) {
-      throw new NotFoundException(
-        'Receipt not found',
-      );
-    }
-
-    return {
-      valid: true,
-      receiptNumber: receipt.receiptNumber,
-      issuedAt: receipt.issuedAt,
-      donorName: receipt.donorName,
-      amount: receipt.amount,
-      currency: receipt.currency,
-      campaignTitle: receipt.campaignTitle,
-      status: receipt.donation.status,
-      paidAt: receipt.donation.paidAt,
-    };
-  }
-    /**
-   * Generate PDF receipt.
+   * Required asset:
+   *   backend/assets/islamic-relief-logo.png
    *
-   * This method only reads an existing receipt.
-   * It does not create or modify any receipt.
+   * The file must be a real PNG binary, not a text file renamed to .png.
    */
   async generatePdf(id: string): Promise<Buffer> {
     const receipt = await this.findOne(id);
-    const logoBuffer = this.getLogoBuffer();
 
     const verificationUrl =
-      `https://backend-api-production-d0b6.up.railway.app/api/receipts/verify?receiptNumber=${encodeURIComponent(receipt.receiptNumber)}`;
+      `https://backend-api-production-d0b6.up.railway.app/api/receipts/verify` +
+      `?receiptNumber=${encodeURIComponent(receipt.receiptNumber)}`;
 
     const qrDataUrl = await QRCode.toDataURL(verificationUrl, {
       errorCorrectionLevel: 'M',
-      margin: 1,
-      width: 300,
+      margin: 2,
+      width: 220,
     });
 
     const qrBuffer = Buffer.from(
@@ -444,41 +226,59 @@ private getLogoBuffer(): Buffer {
       'base64',
     );
 
-    return new Promise<Buffer>((resolve, reject) => {
-      const doc = new PDFDocument({
-        size: 'A4',
-        margin: 45,
-        info: {
-          Title: `Donation Receipt ${receipt.receiptNumber}`,
-          Author: 'Islamic Relief Indonesia',
-          Subject: 'Donation Receipt',
-          Creator: 'Islamic Relief Indonesia Digital Philanthropy Platform',
-        },
-      });
+    const logoPath = path.join(
+      process.cwd(),
+      'assets',
+      'islamic-relief-logo.png',
+    );
 
-      const chunks: Buffer[] = [];
+    const hasLogo = fs.existsSync(logoPath) && fs.statSync(logoPath).size > 100;
+
+    const doc = new PDFDocument({
+      size: 'A4',
+      margin: 0,
+      info: {
+        Title: `Donation Receipt ${receipt.receiptNumber}`,
+        Author: 'Islamic Relief Indonesia',
+        Subject: 'Donation Receipt',
+      },
+    });
+
+    const chunks: Buffer[] = [];
+
+    return new Promise<Buffer>((resolve, reject) => {
       doc.on('data', (chunk: Buffer) => chunks.push(chunk));
       doc.on('end', () => resolve(Buffer.concat(chunks)));
       doc.on('error', reject);
 
-      const LEFT = 45;
-      const RIGHT = 550;
-      const WIDTH = RIGHT - LEFT;
-      const BLUE = '#0072BC';
-      const DARK = '#1F2937';
-      const GRAY = '#6B7280';
-      const LIGHT_GRAY = '#E5E7EB';
-      const GREEN = '#15803D';
+      const PAGE_W = 595.28;
+      const PAGE_H = 841.89;
+      const LEFT = 42;
+      const RIGHT = PAGE_W - 42;
+      const CONTENT_W = RIGHT - LEFT;
 
-      const formatDate = (date: Date) =>
+      const BLUE = '#0878C9';
+      const DARK = '#18324A';
+      const GREY = '#607080';
+      const LIGHT = '#EEF7FD';
+      const GREEN = '#1B9A59';
+      const BORDER = '#B7D9F2';
+
+      const money = (amount: Prisma.Decimal | number | string) =>
+        new Intl.NumberFormat('id-ID', {
+          minimumFractionDigits: 0,
+          maximumFractionDigits: 2,
+        }).format(Number(amount));
+
+      const date = (value: Date) =>
         new Intl.DateTimeFormat('id-ID', {
           day: '2-digit',
           month: 'long',
           year: 'numeric',
           timeZone: 'Asia/Jakarta',
-        }).format(date);
+        }).format(value);
 
-      const formatDateTime = (date: Date) =>
+      const dateTime = (value: Date) =>
         new Intl.DateTimeFormat('id-ID', {
           day: '2-digit',
           month: 'long',
@@ -486,370 +286,390 @@ private getLogoBuffer(): Buffer {
           hour: '2-digit',
           minute: '2-digit',
           timeZone: 'Asia/Jakarta',
-        }).format(date);
+        }).format(value);
 
-      const formatAmount = (amount: Prisma.Decimal | number | string) =>
-        new Intl.NumberFormat('id-ID', {
-          minimumFractionDigits: 0,
-          maximumFractionDigits: 2,
-        }).format(Number(amount));
-
-      const drawLine = (y: number, color = LIGHT_GRAY) => {
-        doc.save()
-          .strokeColor(color)
+      const line = (y: number, x1 = LEFT, x2 = RIGHT) => {
+        doc
+          .save()
+          .strokeColor(BORDER)
           .lineWidth(0.8)
-          .moveTo(LEFT, y)
-          .lineTo(RIGHT, y)
+          .moveTo(x1, y)
+          .lineTo(x2, y)
           .stroke()
           .restore();
       };
 
       const sectionTitle = (title: string, y: number) => {
-        doc.fillColor(BLUE)
+        doc
+          .fillColor(BLUE)
           .font('Helvetica-Bold')
-          .fontSize(10)
-          .text(title, LEFT, y, { width: WIDTH });
-        return y + 17;
+          .fontSize(10.5)
+          .text(title.toUpperCase(), LEFT, y);
       };
 
-      const row = (
+      const labelValue = (
         label: string,
         value: string,
         y: number,
-        options?: { bold?: boolean; valueColor?: string },
+        options?: { boldValue?: boolean },
       ) => {
-        doc.fillColor(GRAY)
+        doc
+          .fillColor(DARK)
           .font('Helvetica')
-          .fontSize(9)
-          .text(label, LEFT, y, { width: 105 });
+          .fontSize(9.5)
+          .text(label, LEFT, y, { width: 125 });
 
-        doc.fillColor(options?.valueColor ?? DARK)
-          .font(options?.bold ? 'Helvetica-Bold' : 'Helvetica')
-          .fontSize(9)
-          .text(value, LEFT + 110, y, { width: WIDTH - 110 });
-
-        return Math.max(y + 16, doc.y);
+        doc
+          .fillColor(DARK)
+          .font(options?.boldValue ? 'Helvetica-Bold' : 'Helvetica')
+          .fontSize(options?.boldValue ? 10.5 : 9.5)
+          .text(`:  ${value}`, LEFT + 125, y, {
+            width: CONTENT_W - 125,
+          });
       };
 
-      // =====================================================
-      // HEADER
-      // =====================================================
-      doc.image(logoBuffer, LEFT, 35, { fit: [78, 78] });
-
-      doc.fillColor(BLUE)
-        .font('Helvetica-Bold')
-        .fontSize(18)
-        .text('ISLAMIC RELIEF INDONESIA', 140, 46, {
-          width: 300,
+      /*
+       * HEADER
+       */
+      if (hasLogo) {
+        doc.image(logoPath, LEFT, 30, {
+          fit: [68, 68],
           align: 'left',
+          valign: 'top',
         });
+      } else {
+        // Safe fallback so the receipt remains usable if the asset is missing.
+        doc
+          .roundedRect(LEFT, 30, 68, 68, 5)
+          .fill(BLUE)
+          .fillColor('#FFFFFF')
+          .font('Helvetica-Bold')
+          .fontSize(9)
+          .text('ISLAMIC', LEFT + 7, 54, { width: 54, align: 'center' })
+          .text('RELIEF', LEFT + 7, 70, { width: 54, align: 'center' });
+      }
 
-      doc.fillColor(GRAY)
-        .font('Helvetica')
-        .fontSize(8)
-        .text('BERSAMA UNTUK KEMANUSIAAN', 141, 70, { width: 300 });
-
-      doc.fillColor(BLUE)
-        .font('Helvetica-Bold')
-        .fontSize(8)
-        .text('DIGITAL PHILANTHROPY', 410, 49, {
-          width: 140,
-          align: 'right',
-        });
-
-      doc.fillColor(GRAY)
-        .font('Helvetica')
-        .fontSize(7)
-        .text('Official Donation Receipt', 410, 64, {
-          width: 140,
-          align: 'right',
-        });
-
-      drawLine(125, BLUE);
-
-      // =====================================================
-      // TITLE
-      // =====================================================
-      doc.fillColor(DARK)
+      doc
+        .fillColor(BLUE)
         .font('Helvetica-Bold')
         .fontSize(21)
-        .text('DONATION RECEIPT', LEFT, 145, {
-          width: WIDTH,
-          align: 'center',
+        .text('ISLAMIC RELIEF INDONESIA', 125, 36, {
+          width: 300,
         });
 
-      doc.fillColor(GRAY)
+      doc
+        .fillColor(GREY)
+        .font('Helvetica')
+        .fontSize(10)
+        .text('BERSAMA UNTUK KEMANUSIAAN', 125, 62);
+
+      doc
+        .strokeColor(BLUE)
+        .lineWidth(1)
+        .moveTo(438, 35)
+        .lineTo(438, 89)
+        .stroke();
+
+      doc
+        .fillColor(BLUE)
         .font('Helvetica')
         .fontSize(8.5)
-        .text('Thank you for your trust and generosity', LEFT, 173, {
-          width: WIDTH,
+        .text('SAVING LIVES', 452, 39)
+        .text('PROTECTING PEOPLE', 452, 53)
+        .text('BUILDING A BETTER TOMORROW', 452, 67);
+
+      doc
+        .fillColor(BLUE)
+        .font('Helvetica-Bold')
+        .fontSize(24)
+        .text('DONATION RECEIPT', LEFT, 112, {
+          width: CONTENT_W,
           align: 'center',
         });
 
-      // =====================================================
-      // RECEIPT INFORMATION
-      // =====================================================
-      let y = 205;
-      y = sectionTitle('RECEIPT INFORMATION', y);
-      y = row('Receipt Number', receipt.receiptNumber, y, { bold: true });
-      y = row('Issued Date', formatDate(receipt.issuedAt), y);
-      drawLine(y + 3);
+      doc
+        .fillColor(DARK)
+        .font('Helvetica')
+        .fontSize(9.5)
+        .text('TERIMA KASIH ATAS KEPERCAYAAN ANDA', LEFT, 143, {
+          width: CONTENT_W,
+          align: 'center',
+        });
 
-      // =====================================================
-      // DONOR INFORMATION
-      // =====================================================
-      y += 18;
-      y = sectionTitle('DONOR INFORMATION', y);
-      y = row('Name', receipt.donorName, y);
+      line(166);
+
+      /*
+       * RECEIPT INFORMATION
+       */
+      sectionTitle('Receipt Information', 181);
+      labelValue('Receipt Number', receipt.receiptNumber, 199);
+      labelValue('Issued Date', date(receipt.issuedAt), 216);
+
+      line(239);
+
+      /*
+       * DONOR INFORMATION
+       */
+      sectionTitle('Donor Information', 254);
+      labelValue('Name', receipt.donorName, 272);
+
+      let donorY = 289;
 
       if (receipt.donorEmail) {
-        y = row('Email', receipt.donorEmail, y);
+        labelValue('Email', receipt.donorEmail, donorY);
+        donorY += 17;
       }
 
       if (receipt.donation?.donorPhone) {
-        y = row('Phone', receipt.donation.donorPhone, y);
+        labelValue('Phone', receipt.donation.donorPhone, donorY);
+        donorY += 17;
       }
 
-      drawLine(y + 3);
+      line(donorY + 16);
 
-      // =====================================================
-      // DONATION DETAILS
-      // =====================================================
-      y += 18;
-      y = sectionTitle('DONATION DETAILS', y);
-      y = row('Campaign', receipt.campaignTitle, y);
-      y = row(
-        'Amount',
-        `${receipt.currency} ${formatAmount(receipt.amount)}`,
-        y,
-        { bold: true },
+      /*
+       * DONATION DETAILS
+       */
+      const donationTop = donorY + 31;
+      sectionTitle('Donation Details', donationTop);
+
+      labelValue(
+        'Campaign',
+        receipt.campaignTitle,
+        donationTop + 19,
       );
-      y = row(
+
+      labelValue(
+        'Amount',
+        `${receipt.currency} ${money(receipt.amount)}`,
+        donationTop + 36,
+        { boldValue: true },
+      );
+
+      labelValue(
         'Status',
         receipt.donation?.status ?? 'PAID',
-        y,
-        { bold: true, valueColor: GREEN },
-      );
-      y = row(
-        'Paid Date',
-        receipt.donation?.paidAt
-          ? formatDateTime(receipt.donation.paidAt)
-          : formatDateTime(receipt.issuedAt),
-        y,
+        donationTop + 53,
+        { boldValue: true },
       );
 
-      if (receipt.donation?.message) {
-        y += 5;
-        doc.fillColor(DARK)
-          .font('Helvetica-Bold')
-          .fontSize(8.5)
-          .text('Donor Message', LEFT, y);
-        y += 13;
-        doc.fillColor(GRAY)
-          .font('Helvetica-Oblique')
-          .fontSize(8)
-          .text(receipt.donation.message, LEFT, y, { width: WIDTH });
-        y = doc.y + 7;
+      if (receipt.donation?.paidAt) {
+        labelValue(
+          'Paid Date',
+          dateTime(receipt.donation.paidAt),
+          donationTop + 70,
+        );
       }
 
-      // =====================================================
-      // IMPACT
-      // =====================================================
-      if (receipt.donation?.impacts?.length) {
-        drawLine(y + 3);
-        y += 18;
-        y = sectionTitle('YOUR IMPACT', y);
+      let afterDetailsY = donationTop + 92;
 
-        for (const impact of receipt.donation.impacts) {
+      if (receipt.donation?.message) {
+        doc
+          .fillColor(DARK)
+          .font('Helvetica-Bold')
+          .fontSize(9.5)
+          .text('Donor Message', LEFT, afterDetailsY);
+
+        doc
+          .fillColor(GREY)
+          .font('Helvetica')
+          .fontSize(9)
+          .text(receipt.donation.message, LEFT, afterDetailsY + 15, {
+            width: CONTENT_W,
+          });
+
+        afterDetailsY += 42;
+      }
+
+      /*
+       * IMPACT
+       */
+      const impacts = receipt.donation?.impacts ?? [];
+
+      if (impacts.length > 0) {
+        line(afterDetailsY);
+        sectionTitle('Your Impact', afterDetailsY + 15);
+
+        let impactY = afterDetailsY + 34;
+
+        for (const impact of impacts.slice(0, 3)) {
           const impactName = impact.campaignImpact.name;
           const unit = impact.campaignImpact.unit;
           const quantity = Number(impact.quantity);
           const allocated = Number(impact.amountAllocated);
 
-          doc.fillColor(DARK)
+          doc
+            .fillColor(DARK)
             .font('Helvetica-Bold')
-            .fontSize(8.5)
-            .text(impactName, LEFT, y, { width: WIDTH });
-          y += 13;
-
-          doc.fillColor(GRAY)
-            .font('Helvetica')
-            .fontSize(7.8)
-            .text(`Contribution: ${quantity} ${unit}`, LEFT, y);
-          y += 12;
-
-          doc.text(
-            `Allocated Amount: ${receipt.currency} ${formatAmount(allocated)}`,
-            LEFT,
-            y,
-          );
-          y += 12;
-
-          if (impact.campaignImpact.description) {
-            doc.text(impact.campaignImpact.description, LEFT, y, {
-              width: WIDTH,
+            .fontSize(9)
+            .text(impactName, LEFT, impactY, {
+              width: 330,
             });
-            y = doc.y + 4;
-          }
 
-          if (impact.description) {
-            doc.text(impact.description, LEFT, y, { width: WIDTH });
-            y = doc.y + 4;
-          }
+          doc
+            .fillColor(DARK)
+            .font('Helvetica')
+            .fontSize(8.5)
+            .text(
+              `${quantity} ${unit}  •  Allocated: ${receipt.currency} ${money(
+                allocated,
+              )}`,
+              LEFT,
+              impactY + 14,
+              { width: CONTENT_W },
+            );
 
-          y += 6;
+          impactY += 34;
         }
+
+        afterDetailsY = impactY + 4;
       }
 
-      // =====================================================
-      // PAYMENT CONFIRMATION
-      // =====================================================
-      drawLine(y + 3);
-      y += 18;
-      y = sectionTitle('PAYMENT CONFIRMATION', y);
+      /*
+       * PAYMENT CONFIRMATION
+       */
+      line(afterDetailsY);
+      sectionTitle('Payment Confirmation', afterDetailsY + 15);
 
-      doc.fillColor(DARK)
+      doc
+        .fillColor(DARK)
         .font('Helvetica')
-        .fontSize(8.5)
+        .fontSize(9.2)
         .text(
           'This receipt confirms that the donation stated above has been successfully received.',
           LEFT,
-          y,
-          { width: WIDTH },
+          afterDetailsY + 34,
+          { width: CONTENT_W },
         );
-      y = doc.y + 10;
 
-      // =====================================================
-      // THANK YOU
-      // =====================================================
-      doc.fillColor(BLUE)
+      /*
+       * THANK YOU
+       */
+      doc
+        .fillColor(BLUE)
         .font('Helvetica-Bold')
-        .fontSize(12)
-        .text('Thank You for Your Generosity', LEFT, y, {
-          width: WIDTH,
+        .fontSize(15)
+        .text('Thank You for Your Generosity', LEFT, afterDetailsY + 65, {
+          width: CONTENT_W,
           align: 'center',
         });
-      y = doc.y + 4;
 
-      doc.fillColor(GRAY)
+      doc
+        .fillColor(GREY)
         .font('Helvetica')
-        .fontSize(8)
+        .fontSize(9)
         .text(
           'Your contribution supports Islamic Relief Indonesia in creating meaningful and sustainable impact for communities in need.',
           LEFT + 25,
-          y,
+          afterDetailsY + 88,
           {
-            width: WIDTH - 50,
+            width: CONTENT_W - 50,
             align: 'center',
           },
         );
-      y = doc.y + 13;
 
-      // =====================================================
-      // QR VERIFICATION BOX
-      // =====================================================
-      const qrBoxHeight = 170;
-      const qrBoxY = y;
+      /*
+       * QR VERIFICATION PANEL
+       *
+       * Important: QR and URL are placed in a fixed-height panel.
+       * This prevents the previous overlap with the footer.
+       */
+      const qrPanelY = afterDetailsY + 120;
+      const qrPanelH = 190;
 
-      doc.save()
-        .fillColor('#F8FAFC')
-        .roundedRect(LEFT, qrBoxY, WIDTH, qrBoxHeight, 6)
-        .fill()
+      doc
+        .save()
+        .roundedRect(LEFT, qrPanelY, CONTENT_W, qrPanelH, 8)
+        .fillAndStroke(LIGHT, BORDER)
         .restore();
 
-      doc.save()
-        .lineWidth(0.8)
-        .strokeColor(LIGHT_GRAY)
-        .roundedRect(LEFT, qrBoxY, WIDTH, qrBoxHeight, 6)
-        .stroke()
-        .restore();
+      sectionTitle('Receipt Verification', qrPanelY + 14);
 
-      doc.fillColor(BLUE)
-        .font('Helvetica-Bold')
-        .fontSize(10)
-        .text('RECEIPT VERIFICATION', LEFT, qrBoxY + 11, {
-          width: WIDTH,
-          align: 'center',
-        });
-
-      doc.fillColor(GRAY)
+      doc
+        .fillColor(GREY)
         .font('Helvetica')
-        .fontSize(7.5)
-        .text('Scan the QR code to verify this receipt.', LEFT, qrBoxY + 28, {
-          width: WIDTH,
+        .fontSize(8.5)
+        .text('Scan the QR code to verify this receipt.', LEFT, qrPanelY + 32, {
+          width: CONTENT_W,
           align: 'center',
         });
 
-      const QR_SIZE = 100;
-      const QR_X = LEFT + WIDTH / 2 - QR_SIZE / 2;
-      const QR_Y = qrBoxY + 46;
+      const QR_SIZE = 118;
+      const QR_X = (PAGE_W - QR_SIZE) / 2;
+      const QR_Y = qrPanelY + 50;
 
       doc.image(qrBuffer, QR_X, QR_Y, {
         width: QR_SIZE,
         height: QR_SIZE,
       });
 
-      doc.fillColor(GRAY)
+      doc
+        .fillColor(GREY)
         .font('Helvetica')
-        .fontSize(6)
-        .text(verificationUrl, LEFT + 15, qrBoxY + 153, {
-          width: WIDTH - 30,
+        .fontSize(6.8)
+        .text(verificationUrl, LEFT + 15, qrPanelY + 171, {
+          width: CONTENT_W - 30,
           align: 'center',
           lineBreak: false,
         });
 
-      y = qrBoxY + qrBoxHeight + 13;
+      /*
+       * FOOTER
+       */
+      const footerY = 770;
 
-      // =====================================================
-      // FOOTER
-      // =====================================================
-      drawLine(y);
-      y += 10;
+      line(footerY);
 
-      doc.fillColor(GRAY)
+      doc
+        .fillColor(GREY)
         .font('Helvetica')
-        .fontSize(6.8)
+        .fontSize(7.5)
         .text(
           'This document was generated electronically by the Islamic Relief Indonesia Digital Philanthropy Platform.',
           LEFT,
-          y,
+          footerY + 13,
           {
-            width: WIDTH,
+            width: CONTENT_W,
             align: 'center',
           },
         );
-      y = doc.y + 4;
 
-      doc.fillColor(GRAY)
+      doc
+        .fillColor(GREY)
         .font('Helvetica')
-        .fontSize(6.8)
-        .text(`Receipt ID: ${receipt.id}`, LEFT, y, {
-          width: WIDTH,
+        .fontSize(7)
+        .text(`Receipt ID: ${receipt.id}`, LEFT, footerY + 27, {
+          width: CONTENT_W,
           align: 'center',
         });
-      y = doc.y + 10;
 
-      drawLine(y, BLUE);
-      y += 8;
+      line(footerY + 49);
 
-      doc.fillColor(BLUE)
+      doc
+        .fillColor(BLUE)
         .font('Helvetica-Bold')
-        .fontSize(7)
-        .text('www.islamic-relief.or.id', LEFT, y, {
-          width: 220,
-          align: 'left',
+        .fontSize(8.5)
+        .text('www.islamic-relief.or.id', LEFT, footerY + 63);
+
+      doc
+        .fillColor(BLUE)
+        .font('Helvetica')
+        .fontSize(8.5)
+        .text('@islamicreliefid', 300, footerY + 63, {
+          width: 100,
+          align: 'center',
         });
 
-      doc.fillColor(GRAY)
-        .font('Helvetica')
-        .fontSize(7)
-        .text('Islamic Relief Indonesia', 330, y, {
-          width: 220,
+      doc
+        .fillColor(BLUE)
+        .font('Helvetica-BoldOblique')
+        .fontSize(9)
+        .text('"Bersama untuk Kemanusiaan"', 420, footerY + 61, {
+          width: 133,
           align: 'right',
         });
 
       doc.end();
     });
   }
-
 }
