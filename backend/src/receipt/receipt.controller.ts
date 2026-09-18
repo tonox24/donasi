@@ -54,7 +54,20 @@ export class ReceiptController {
       receiptNumber.trim(),
     );
   }
+  @Get('verify')
+  verifyReceipt(
+    @Query('receiptNumber') receiptNumber: string,
+  ) {
+    if (!receiptNumber?.trim()) {
+      throw new BadRequestException(
+        'receiptNumber query parameter is required',
+      );
+    }
 
+    return this.receiptService.verifyReceipt(
+      receiptNumber.trim(),
+    );
+  }
   @Get(':id/pdf')
   @UseGuards(JwtAuthGuard)
   @Header('Content-Type', 'application/pdf')
