@@ -4,9 +4,11 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 
+import QRCode from 'qrcode';
 import PDFDocument from 'pdfkit';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma.service';
+
 
 
 type TransactionClient = Prisma.TransactionClient;
@@ -351,6 +353,59 @@ export class ReceiptService {
     return receipt;
   }
     /**
+   * Public receipt verification.
+   *
+   * This endpoint intentionally returns limited information.
+   * It does not expose donor email, phone, payment details,
+   * donor profile, or internal database information.
+   */
+  async verifyReceipt(receiptNumber: string) {
+    if (!receiptNumber?.trim()) {
+      throw new BadRequestException(
+        'Receipt number is required',
+      );
+    }
+
+    const receipt =
+      await this.prisma.receipt.findUnique({
+        where: {
+          receiptNumber: receiptNumber.trim(),
+        },
+        select: {
+          receiptNumber: true,
+          issuedAt: true,
+          donorName: true,
+          amount: true,
+          currency: true,
+          campaignTitle: true,
+          donation: {
+            select: {
+              status: true,
+              paidAt: true,
+            },
+          },
+        },
+      });
+
+    if (!receipt) {
+      throw new NotFoundException(
+        'Receipt not found',
+      );
+    }
+
+    return {
+      valid: true,
+      receiptNumber: receipt.receiptNumber,
+      issuedAt: receipt.issuedAt,
+      donorName: receipt.donorName,
+      amount: receipt.amount,
+      currency: receipt.currency,
+      campaignTitle: receipt.campaignTitle,
+      status: receipt.donation.status,
+      paidAt: receipt.donation.paidAt,
+    };
+  }
+    /**
    * Generate PDF receipt.
    *
    * This method only reads an existing receipt.
@@ -358,6 +413,30 @@ export class ReceiptService {
    */
   async generatePdf(id: string): Promise<Buffer> {
     const receipt = await this.findOne(id);
+
+        const verificationUrl =
+      `https://backend-api-production-d0b6.up.railway.app/api/receipts/verify?receiptNumber=${encodeURIComponent(
+        receipt.receiptNumber,
+      )}`;
+
+    const qrDataUrl =
+      await QRCode.toDataURL(
+        verificationUrl,
+        {
+          errorCorrectionLevel: 'M',
+          margin: 1,
+          width: 180,
+        },
+      );
+
+    const qrBase64 =
+      qrDataUrl.replace(
+        /^data:image\/png;base64,/,
+        '',
+      );
+
+    const qrBuffer =
+      Buffer.from(qrBase64, 'base64');
 
     return new Promise<Buffer>((resolve, reject) => {
       const doc = new PDFDocument({
@@ -501,6 +580,83 @@ export class ReceiptService {
         .fontSize(11)
         .text('DONATION DETAILS');
 
+            /*
+       * Impact information
+       */
+      if (
+        receipt.donation?.impacts &&
+        receipt.donation.impacts.length > 0
+      ) {
+        doc.moveDown(1);
+
+        drawLine();
+
+        doc.moveDown(0.8);
+
+        doc
+          .font('Helvetica-Bold')
+          .fontSize(11)
+          .text('YOUR IMPACT');
+
+        doc.moveDown(0.5);
+
+        doc
+          .font('Helvetica')
+          .fontSize(9);
+
+        for (
+          const impact of receipt.donation.impacts
+        ) {
+          const impactName =
+            impact.campaignImpact.name;
+
+          const unit =
+            impact.campaignImpact.unit;
+
+          const quantity =
+            Number(impact.quantity);
+
+          const allocated =
+            Number(impact.amountAllocated);
+
+          doc
+            .font('Helvetica-Bold')
+            .text(impactName);
+
+          doc
+            .font('Helvetica')
+            .text(
+              `Contribution: ${quantity} ${unit}`,
+            );
+
+          doc.text(
+            `Allocated Amount: ${receipt.currency} ${formatAmount(allocated)}`,
+          );
+
+          if (
+            impact.campaignImpact.description
+          ) {
+            doc.text(
+              impact.campaignImpact.description,
+              {
+                width: 495,
+              },
+            );
+          }
+
+          if (impact.description) {
+            doc.text(
+              impact.description,
+              {
+                width: 495,
+              },
+            );
+          }
+
+          doc.moveDown(0.6);
+        }
+      }
+
       doc.moveDown(0.5);
 
       doc.font('Helvetica').fontSize(10);
@@ -586,7 +742,56 @@ export class ReceiptService {
             align: 'center',
           },
         );
+      /*
+       * Verification QR
+       */
+      doc.moveDown(1);
 
+      drawLine();
+
+      doc.moveDown(0.8);
+
+      doc
+        .font('Helvetica-Bold')
+        .fontSize(10)
+        .text('RECEIPT VERIFICATION', {
+          align: 'center',
+        });
+
+      doc.moveDown(0.4);
+
+      doc
+        .font('Helvetica')
+        .fontSize(8)
+        .text(
+          'Scan the QR code to verify this receipt.',
+          {
+            align: 'center',
+          },
+        );
+
+      doc.image(
+        qrBuffer,
+        237,
+        doc.y + 8,
+        {
+          width: 120,
+          height: 120,
+        },
+      );
+
+      doc.moveDown(9);
+
+      doc
+        .font('Helvetica')
+        .fontSize(7)
+        .text(
+          verificationUrl,
+          {
+            align: 'center',
+            width: 495,
+          },
+        );
       /*
        * Footer
        */
