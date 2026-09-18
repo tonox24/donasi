@@ -17,40 +17,25 @@ export class ReceiptController {
     private readonly receiptService: ReceiptService,
   ) {}
 
-  /**
-   * GET /api/receipts
-   */
   @Get()
   @UseGuards(JwtAuthGuard)
   findAll() {
     return this.receiptService.findAll();
   }
 
-  /**
-   * GET /api/receipts/donation/:donationId
-   */
   @Get('donation/:donationId')
   @UseGuards(JwtAuthGuard)
   findByDonation(
-    @Param(
-      'donationId',
-      new ParseUUIDPipe(),
-    )
+    @Param('donationId', new ParseUUIDPipe())
     donationId: string,
   ) {
-    return this.receiptService.findByDonation(
-      donationId,
-    );
+    return this.receiptService.findByDonation(donationId);
   }
 
-  /**
-   * GET /api/receipts/search?receiptNumber=...
-   */
   @Get('search')
   @UseGuards(JwtAuthGuard)
   findByReceiptNumber(
-    @Query('receiptNumber')
-    receiptNumber: string,
+    @Query('receiptNumber') receiptNumber: string,
   ) {
     if (!receiptNumber?.trim()) {
       throw new BadRequestException(
@@ -59,20 +44,14 @@ export class ReceiptController {
     }
 
     return this.receiptService.findByReceiptNumber(
-      receiptNumber,
+      receiptNumber.trim(),
     );
   }
 
-  /**
-   * GET /api/receipts/:id
-   */
   @Get(':id')
   @UseGuards(JwtAuthGuard)
   findOne(
-    @Param(
-      'id',
-      new ParseUUIDPipe(),
-    )
+    @Param('id', new ParseUUIDPipe())
     id: string,
   ) {
     return this.receiptService.findOne(id);
