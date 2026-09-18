@@ -7,10 +7,14 @@ import {
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma.service';
 import { CreatePaymentDto } from './dto/create-payment.dto';
+import { ReceiptService } from '../receipt/receipt.service';
 
 @Injectable()
 export class PaymentService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+  private readonly prisma: PrismaService,
+  private readonly receiptService: ReceiptService,
+) {}
 
   async create(dto: CreatePaymentDto) {
     const donation = await this.prisma.donation.findUnique({
