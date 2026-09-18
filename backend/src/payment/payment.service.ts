@@ -156,6 +156,11 @@ export class PaymentService {
             rawResponse: rawResponse ?? Prisma.JsonNull,
           },
         });
+      const receipt =
+  await this.receiptService.createForPaidDonation(
+    payment.donationId,
+    tx,
+  );
 
       const updatedDonation = await tx.donation.update({
         where: {
