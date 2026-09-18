@@ -5,8 +5,9 @@ import {
 } from '@nestjs/common';
 
 import { Prisma } from '@prisma/client';
-
 import { PrismaService } from '../prisma.service';
+
+type TransactionClient = Prisma.TransactionClient;
 
 @Injectable()
 export class ReceiptService {
@@ -25,86 +26,61 @@ export class ReceiptService {
    *
    * INV-YRII/260918/2026/000001
    */
-  private async generateReceiptNumber(
-    tx: Prisma.TransactionClient,
-    issuedAt: Date,
-  ): Promise<string> {
-    const dateParts =
-      new Intl.DateTimeFormat('en-GB', {
-        timeZone: 'Asia/Jakarta',
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-      }).formatToParts(issuedAt);
+ private async generateReceiptNumber(
+  tx: TransactionClient,
+  issuedAt: Date,
+): Promise<string> {
+  const dateParts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Jakarta',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(issuedAt);
 
-    const year = Number(
-      dateParts.find(
-        (part) => part.type === 'year',
-      )?.value,
-    );
+  const year = Number(
+    dateParts.find((part) => part.type === 'year')?.value,
+  );
 
-    const month =
-      dateParts.find(
-        (part) => part.type === 'month',
-      )?.value ?? '01';
+  const month =
+    dateParts.find((part) => part.type === 'month')?.value ?? '01';
 
-    const day =
-      dateParts.find(
-        (part) => part.type === 'day',
-      )?.value ?? '01';
+  const day =
+    dateParts.find((part) => part.type === 'day')?.value ?? '01';
 
-    if (!year) {
-      throw new BadRequestException(
-        'Unable to determine receipt year',
-      );
-    }
+  /**
+   * Atomic yearly sequence.
+   *
+   * First receipt of the year:
+   *   1
+   *
+   * Next receipt:
+   *   2
+   *
+   * The increment is performed by PostgreSQL through
+   * Prisma's atomic increment operation.
+   */
+  const sequence = await tx.receiptSequence.upsert({
+    where: {
+      year,
+    },
+    create: {
+      year,
+      lastNumber: 1,
+    },
+    update: {
+      lastNumber: {
+        increment: 1,
+      },
+    },
+  });
 
-    /**
-     * Atomic sequence generation.
-     *
-     * First receipt:
-     * 000001
-     *
-     * Second receipt:
-     * 000002
-     *
-     * etc.
-     */
-    const result =
-      await tx.$queryRaw<
-        Array<{ lastNumber: number }>
-      >(
-        Prisma.sql`
-          INSERT INTO "ReceiptSequence"
-            ("year", "lastNumber", "updatedAt")
-          VALUES
-            (${year}, 1, NOW())
+  const sequenceNumber = String(sequence.lastNumber).padStart(
+    6,
+    '0',
+  );
 
-          ON CONFLICT ("year")
-          DO UPDATE SET
-            "lastNumber" =
-              "ReceiptSequence"."lastNumber" + 1,
-            "updatedAt" = NOW()
-
-          RETURNING "lastNumber";
-        `,
-      );
-
-    const sequence =
-      result[0]?.lastNumber;
-
-    if (!sequence) {
-      throw new BadRequestException(
-        'Failed to generate receipt sequence',
-      );
-    }
-
-    const sequenceNumber =
-      String(sequence).padStart(6, '0');
-
-    return `INV-YRII/${String(year).slice(-2)}${month}${day}/${year}/${sequenceNumber}`;
-  }
-
+  return `INV-YRII/${String(year).slice(-2)}${month}${day}/${year}/${sequenceNumber}`;
+}
   /**
    * Create receipt for a PAID donation.
    *
