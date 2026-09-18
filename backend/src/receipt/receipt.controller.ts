@@ -55,25 +55,23 @@ export class ReceiptController {
     );
   }
 
-    @Get(':id/pdf')
+  @Get(':id/pdf')
   @UseGuards(JwtAuthGuard)
   @Header('Content-Type', 'application/pdf')
-  getPdf(
+  async getPdf(
     @Param(
       'id',
       new ParseUUIDPipe(),
     )
     id: string,
   ) {
-    return this.receiptService
-      .generatePdf(id)
-      .then(
-        (pdfBuffer) =>
-          new StreamableFile(pdfBuffer, {
-            type: 'application/pdf',
-            disposition: 'attachment',
-          }),
-      );
+    const pdfBuffer =
+      await this.receiptService.generatePdf(id);
+
+    return new StreamableFile(pdfBuffer, {
+      type: 'application/pdf',
+      disposition: 'attachment',
+    });
   }
 
   @Get(':id')
@@ -87,3 +85,4 @@ export class ReceiptController {
   ) {
     return this.receiptService.findOne(id);
   }
+}
