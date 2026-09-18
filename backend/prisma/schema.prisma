@@ -418,17 +418,8 @@ model Donation {
   updatedAt DateTime @updatedAt
   paidAt    DateTime?
 
-  donorProfile DonorProfile? @relation(
-    fields: [donorId],
-    references: [id],
-    onDelete: SetNull
-  )
-
-  campaign Campaign @relation(
-    fields: [campaignId],
-    references: [id],
-    onDelete: Restrict
-  )
+  donorProfile DonorProfile? @relation(fields: [donorId], references: [id], onDelete: SetNull)
+  campaign     Campaign      @relation(fields: [campaignId], references: [id], onDelete: Restrict)
 
   payments PaymentTransaction[]
   impacts  DonationImpact[]
@@ -441,7 +432,6 @@ model Donation {
   @@index([donorEmail])
   @@index([donorPhone])
 }
-
 /*
 |--------------------------------------------------------------------------
 | PAYMENT TRANSACTION
@@ -558,12 +548,7 @@ model Receipt {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  donation Donation @relation(
-    fields: [donationId],
-    references: [id],
-    onDelete: Restrict
-  )
-
+  donation Donation @relation(fields: [donationId], references: [id], onDelete: Restrict)
   @@index([campaignId])
   @@index([issuedAt])
   @@index([donorEmail])
