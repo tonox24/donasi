@@ -4,6 +4,8 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 
+import * as fs from 'fs';
+import * as path from 'path';
 import QRCode from 'qrcode';
 import PDFDocument from 'pdfkit';
 import { Prisma } from '@prisma/client';
@@ -18,7 +20,21 @@ export class ReceiptService {
   constructor(
     private readonly prisma: PrismaService,
   ) {}
+private getLogoPath(): string {
+  const logoPath = path.join(
+    process.cwd(),
+    'assets',
+    'islamic-relief-logo.png',
+  );
 
+  if (!fs.existsSync(logoPath)) {
+    throw new Error(
+      `Receipt logo not found: ${logoPath}`,
+    );
+  }
+
+  return logoPath;
+}
   /**
    * Generate receipt number.
    *
