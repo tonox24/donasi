@@ -423,6 +423,7 @@ model Donation {
 
   payments PaymentTransaction[]
   impacts  DonationImpact[]
+  receipts Receipt[]
 
   @@index([donorId])
   @@index([campaignId])
@@ -521,4 +522,45 @@ model DonationImpact {
 
   @@index([donationId])
   @@index([campaignImpactId])
+}
+/* --------------------------------------------------------------------------
+| RECEIPT / KUITANSI
+|-------------------------------------------------------------------------- */
+
+model Receipt {
+  id         String @id @default(uuid())
+  donationId String
+
+  receiptNumber String   @unique
+  issuedAt     DateTime @default(now())
+
+  donorName  String
+  donorEmail String?
+
+  amount   Decimal @db.Decimal(18, 2)
+  currency String  @default("IDR")
+
+  campaignId String
+  campaignTitle String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  donation Donation @relation(fields: [donationId], references: [id], onDelete: Restrict)
+
+  @@index([donationId])
+  @@index([campaignId])
+  @@index([issuedAt])
+  @@index([donorEmail])
+}
+
+/* --------------------------------------------------------------------------
+| RECEIPT NUMBER SEQUENCE
+|-------------------------------------------------------------------------- */
+
+model ReceiptSequence {
+  year       Int @id
+  lastNumber Int @default(0)
+
+  updatedAt DateTime @updatedAt
 }
