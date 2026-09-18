@@ -26,10 +26,15 @@ export class ReceiptController {
   @Get('donation/:donationId')
   @UseGuards(JwtAuthGuard)
   findByDonation(
-    @Param('donationId', new ParseUUIDPipe())
+    @Param(
+      'donationId',
+      new ParseUUIDPipe(),
+    )
     donationId: string,
   ) {
-    return this.receiptService.findByDonation(donationId);
+    return this.receiptService.findByDonation(
+      donationId,
+    );
   }
 
   @Get('search')
@@ -51,7 +56,10 @@ export class ReceiptController {
   @Get(':id')
   @UseGuards(JwtAuthGuard)
   findOne(
-    @Param('id', new ParseUUIDPipe())
+    @Param(
+      'id',
+      new ParseUUIDPipe(),
+    )
     id: string,
   ) {
     return this.receiptService.findOne(id);
