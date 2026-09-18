@@ -8,12 +8,15 @@ import { ReceiptModule } from '../receipt/receipt.module';
   imports: [
     ReceiptModule,
   ],
+
   controllers: [
     PaymentController,
   ],
+
   providers: [
     PaymentService,
   ],
+
   exports: [
     PaymentService,
   ],
