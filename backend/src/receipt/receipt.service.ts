@@ -5,14 +5,11 @@ import {
 } from '@nestjs/common';
 
 import * as fs from 'fs';
-import * as path from 'path';
 import QRCode from 'qrcode';
 import PDFDocument from 'pdfkit';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma.service';
 import * as path from 'path';
-
-
 
 type TransactionClient = Prisma.TransactionClient;
 
@@ -21,21 +18,22 @@ export class ReceiptService {
   constructor(
     private readonly prisma: PrismaService,
   ) {}
-private getLogoPath(): string {
-  const logoPath = path.join(
-    process.cwd(),
-    'assets',
-    'islamic-relief-logo.png',
-  );
-
-  if (!fs.existsSync(logoPath)) {
-    throw new Error(
-      `Receipt logo not found: ${logoPath}`,
+private getLogoBuffer(): Buffer {
+    const logoPath = path.join(
+      process.cwd(),
+      'assets',
+      'islamic-relief-logo.png',
     );
+
+    if (!fs.existsSync(logoPath)) {
+      throw new Error(
+        `Receipt logo not found: ${logoPath}`,
+      );
+    }
+
+    return fs.readFileSync(logoPath);
   }
 
-  return logoPath;
-}
   /**
    * Generate receipt number.
    *
@@ -430,72 +428,58 @@ private getLogoPath(): string {
    */
   async generatePdf(id: string): Promise<Buffer> {
     const receipt = await this.findOne(id);
+    const logoBuffer = this.getLogoBuffer();
 
-        const verificationUrl =
-      `https://backend-api-production-d0b6.up.railway.app/api/receipts/verify?receiptNumber=${encodeURIComponent(
-        receipt.receiptNumber,
-      )}`;
+    const verificationUrl =
+      `https://backend-api-production-d0b6.up.railway.app/api/receipts/verify?receiptNumber=${encodeURIComponent(receipt.receiptNumber)}`;
 
-    const qrDataUrl =
-      await QRCode.toDataURL(
-        verificationUrl,
-        {
-          errorCorrectionLevel: 'M',
-          margin: 1,
-          width: 180,
-        },
-      );
+    const qrDataUrl = await QRCode.toDataURL(verificationUrl, {
+      errorCorrectionLevel: 'M',
+      margin: 1,
+      width: 300,
+    });
 
-    const qrBase64 =
-      qrDataUrl.replace(
-        /^data:image\/png;base64,/,
-        '',
-      );
+    const qrBuffer = Buffer.from(
+      qrDataUrl.replace(/^data:image\/png;base64,/, ''),
+      'base64',
+    );
 
-    const qrBuffer =
-      Buffer.from(qrBase64, 'base64');
-    
-const logoPath = path.join(
-  process.cwd(),
-  'assets',
-  'islamic-relief-logo.png',
-);
     return new Promise<Buffer>((resolve, reject) => {
       const doc = new PDFDocument({
         size: 'A4',
-        margin: 50,
+        margin: 45,
         info: {
           Title: `Donation Receipt ${receipt.receiptNumber}`,
           Author: 'Islamic Relief Indonesia',
           Subject: 'Donation Receipt',
+          Creator: 'Islamic Relief Indonesia Digital Philanthropy Platform',
         },
       });
 
       const chunks: Buffer[] = [];
+      doc.on('data', (chunk: Buffer) => chunks.push(chunk));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
 
-      doc.on('data', (chunk: Buffer) => {
-        chunks.push(chunk);
-      });
+      const LEFT = 45;
+      const RIGHT = 550;
+      const WIDTH = RIGHT - LEFT;
+      const BLUE = '#0072BC';
+      const DARK = '#1F2937';
+      const GRAY = '#6B7280';
+      const LIGHT_GRAY = '#E5E7EB';
+      const GREEN = '#15803D';
 
-      doc.on('end', () => {
-        resolve(Buffer.concat(chunks));
-      });
-
-      doc.on('error', (error) => {
-        reject(error);
-      });
-
-      const formatDate = (date: Date) => {
-        return new Intl.DateTimeFormat('id-ID', {
+      const formatDate = (date: Date) =>
+        new Intl.DateTimeFormat('id-ID', {
           day: '2-digit',
           month: 'long',
           year: 'numeric',
           timeZone: 'Asia/Jakarta',
         }).format(date);
-      };
 
-      const formatDateTime = (date: Date) => {
-        return new Intl.DateTimeFormat('id-ID', {
+      const formatDateTime = (date: Date) =>
+        new Intl.DateTimeFormat('id-ID', {
           day: '2-digit',
           month: 'long',
           year: 'numeric',
@@ -503,371 +487,369 @@ const logoPath = path.join(
           minute: '2-digit',
           timeZone: 'Asia/Jakarta',
         }).format(date);
-      };
 
-      const formatAmount = (amount: Prisma.Decimal | number | string) => {
-        const numericAmount = Number(amount);
-
-        return new Intl.NumberFormat('id-ID', {
+      const formatAmount = (amount: Prisma.Decimal | number | string) =>
+        new Intl.NumberFormat('id-ID', {
           minimumFractionDigits: 0,
           maximumFractionDigits: 2,
-        }).format(numericAmount);
+        }).format(Number(amount));
+
+      const drawLine = (y: number, color = LIGHT_GRAY) => {
+        doc.save()
+          .strokeColor(color)
+          .lineWidth(0.8)
+          .moveTo(LEFT, y)
+          .lineTo(RIGHT, y)
+          .stroke()
+          .restore();
       };
 
-      const drawLine = () => {
-        doc
-          .moveTo(50, doc.y)
-          .lineTo(545, doc.y)
-          .stroke();
+      const sectionTitle = (title: string, y: number) => {
+        doc.fillColor(BLUE)
+          .font('Helvetica-Bold')
+          .fontSize(10)
+          .text(title, LEFT, y, { width: WIDTH });
+        return y + 17;
       };
 
-      /*
-       * Header
-       */
-     /*
- * Header
- */
+      const row = (
+        label: string,
+        value: string,
+        y: number,
+        options?: { bold?: boolean; valueColor?: string },
+      ) => {
+        doc.fillColor(GRAY)
+          .font('Helvetica')
+          .fontSize(9)
+          .text(label, LEFT, y, { width: 105 });
 
-// Logo
-doc.image(logoPath, 50, 45, {
-  fit: [80, 80],
-  align: 'left',
-});
+        doc.fillColor(options?.valueColor ?? DARK)
+          .font(options?.bold ? 'Helvetica-Bold' : 'Helvetica')
+          .fontSize(9)
+          .text(value, LEFT + 110, y, { width: WIDTH - 110 });
 
-// Organization name
-doc
-  .font('Helvetica-Bold')
-  .fontSize(18)
-  .text(
-    'ISLAMIC RELIEF INDONESIA',
-    145,
-    55,
-    {
-      width: 350,
-      align: 'center',
-    },
-  );
+        return Math.max(y + 16, doc.y);
+      };
 
-// Receipt title
-doc
-  .font('Helvetica')
-  .fontSize(10)
-  .text(
-    'DONATION RECEIPT',
-    145,
-    80,
-    {
-      width: 350,
-      align: 'center',
-    },
-  );
+      // =====================================================
+      // HEADER
+      // =====================================================
+      doc.image(logoBuffer, LEFT, 35, { fit: [78, 78] });
 
-doc.y = 135;
-
-drawLine();
-      doc.moveDown(1);
-
-      drawLine();
-
-      /*
-       * Receipt information
-       */
-      doc.moveDown(0.8);
-
-      doc
+      doc.fillColor(BLUE)
         .font('Helvetica-Bold')
-        .fontSize(11)
-        .text('RECEIPT INFORMATION');
+        .fontSize(18)
+        .text('ISLAMIC RELIEF INDONESIA', 140, 46, {
+          width: 300,
+          align: 'left',
+        });
 
-      doc.moveDown(0.5);
+      doc.fillColor(GRAY)
+        .font('Helvetica')
+        .fontSize(8)
+        .text('BERSAMA UNTUK KEMANUSIAAN', 141, 70, { width: 300 });
 
-      doc.font('Helvetica').fontSize(10);
-
-      doc.text(`Receipt Number : ${receipt.receiptNumber}`);
-      doc.text(`Issued Date   : ${formatDate(receipt.issuedAt)}`);
-
-      doc.moveDown(0.8);
-
-      drawLine();
-
-      /*
-       * Donor information
-       */
-      doc.moveDown(0.8);
-
-      doc
+      doc.fillColor(BLUE)
         .font('Helvetica-Bold')
-        .fontSize(11)
-        .text('DONOR INFORMATION');
+        .fontSize(8)
+        .text('DIGITAL PHILANTHROPY', 410, 49, {
+          width: 140,
+          align: 'right',
+        });
 
-      doc.moveDown(0.5);
+      doc.fillColor(GRAY)
+        .font('Helvetica')
+        .fontSize(7)
+        .text('Official Donation Receipt', 410, 64, {
+          width: 140,
+          align: 'right',
+        });
 
-      doc.font('Helvetica').fontSize(10);
+      drawLine(125, BLUE);
 
-      doc.text(`Name          : ${receipt.donorName}`);
+      // =====================================================
+      // TITLE
+      // =====================================================
+      doc.fillColor(DARK)
+        .font('Helvetica-Bold')
+        .fontSize(21)
+        .text('DONATION RECEIPT', LEFT, 145, {
+          width: WIDTH,
+          align: 'center',
+        });
+
+      doc.fillColor(GRAY)
+        .font('Helvetica')
+        .fontSize(8.5)
+        .text('Thank you for your trust and generosity', LEFT, 173, {
+          width: WIDTH,
+          align: 'center',
+        });
+
+      // =====================================================
+      // RECEIPT INFORMATION
+      // =====================================================
+      let y = 205;
+      y = sectionTitle('RECEIPT INFORMATION', y);
+      y = row('Receipt Number', receipt.receiptNumber, y, { bold: true });
+      y = row('Issued Date', formatDate(receipt.issuedAt), y);
+      drawLine(y + 3);
+
+      // =====================================================
+      // DONOR INFORMATION
+      // =====================================================
+      y += 18;
+      y = sectionTitle('DONOR INFORMATION', y);
+      y = row('Name', receipt.donorName, y);
 
       if (receipt.donorEmail) {
-        doc.text(`Email         : ${receipt.donorEmail}`);
+        y = row('Email', receipt.donorEmail, y);
       }
 
       if (receipt.donation?.donorPhone) {
-        doc.text(`Phone         : ${receipt.donation.donorPhone}`);
+        y = row('Phone', receipt.donation.donorPhone, y);
       }
 
-      doc.moveDown(0.8);
+      drawLine(y + 3);
 
-      drawLine();
+      // =====================================================
+      // DONATION DETAILS
+      // =====================================================
+      y += 18;
+      y = sectionTitle('DONATION DETAILS', y);
+      y = row('Campaign', receipt.campaignTitle, y);
+      y = row(
+        'Amount',
+        `${receipt.currency} ${formatAmount(receipt.amount)}`,
+        y,
+        { bold: true },
+      );
+      y = row(
+        'Status',
+        receipt.donation?.status ?? 'PAID',
+        y,
+        { bold: true, valueColor: GREEN },
+      );
+      y = row(
+        'Paid Date',
+        receipt.donation?.paidAt
+          ? formatDateTime(receipt.donation.paidAt)
+          : formatDateTime(receipt.issuedAt),
+        y,
+      );
 
-      /*
-       * Donation information
-       */
-      doc.moveDown(0.8);
-
-      doc
-        .font('Helvetica-Bold')
-        .fontSize(11)
-        .text('DONATION DETAILS');
-
-            /*
-       * Impact information
-       */
-      if (
-        receipt.donation?.impacts &&
-        receipt.donation.impacts.length > 0
-      ) {
-        
-
-
-        doc.moveDown(0.8);
-
-        doc
+      if (receipt.donation?.message) {
+        y += 5;
+        doc.fillColor(DARK)
           .font('Helvetica-Bold')
-          .fontSize(11)
-          .text('YOUR IMPACT');
+          .fontSize(8.5)
+          .text('Donor Message', LEFT, y);
+        y += 13;
+        doc.fillColor(GRAY)
+          .font('Helvetica-Oblique')
+          .fontSize(8)
+          .text(receipt.donation.message, LEFT, y, { width: WIDTH });
+        y = doc.y + 7;
+      }
 
-        doc.moveDown(0.5);
+      // =====================================================
+      // IMPACT
+      // =====================================================
+      if (receipt.donation?.impacts?.length) {
+        drawLine(y + 3);
+        y += 18;
+        y = sectionTitle('YOUR IMPACT', y);
 
-        doc
-          .font('Helvetica')
-          .fontSize(9);
+        for (const impact of receipt.donation.impacts) {
+          const impactName = impact.campaignImpact.name;
+          const unit = impact.campaignImpact.unit;
+          const quantity = Number(impact.quantity);
+          const allocated = Number(impact.amountAllocated);
 
-        for (
-          const impact of receipt.donation.impacts
-        ) {
-          const impactName =
-            impact.campaignImpact.name;
-
-          const unit =
-            impact.campaignImpact.unit;
-
-          const quantity =
-            Number(impact.quantity);
-
-          const allocated =
-            Number(impact.amountAllocated);
-
-          doc
+          doc.fillColor(DARK)
             .font('Helvetica-Bold')
-            .text(impactName);
+            .fontSize(8.5)
+            .text(impactName, LEFT, y, { width: WIDTH });
+          y += 13;
 
-          doc
+          doc.fillColor(GRAY)
             .font('Helvetica')
-            .text(
-              `Contribution: ${quantity} ${unit}`,
-            );
+            .fontSize(7.8)
+            .text(`Contribution: ${quantity} ${unit}`, LEFT, y);
+          y += 12;
 
           doc.text(
             `Allocated Amount: ${receipt.currency} ${formatAmount(allocated)}`,
+            LEFT,
+            y,
           );
+          y += 12;
 
-          if (
-            impact.campaignImpact.description
-          ) {
-            doc.text(
-              impact.campaignImpact.description,
-              {
-                width: 495,
-              },
-            );
+          if (impact.campaignImpact.description) {
+            doc.text(impact.campaignImpact.description, LEFT, y, {
+              width: WIDTH,
+            });
+            y = doc.y + 4;
           }
 
           if (impact.description) {
-            doc.text(
-              impact.description,
-              {
-                width: 495,
-              },
-            );
+            doc.text(impact.description, LEFT, y, { width: WIDTH });
+            y = doc.y + 4;
           }
 
-          doc.moveDown(0.6);
+          y += 6;
         }
       }
 
-      doc.moveDown(0.5);
+      // =====================================================
+      // PAYMENT CONFIRMATION
+      // =====================================================
+      drawLine(y + 3);
+      y += 18;
+      y = sectionTitle('PAYMENT CONFIRMATION', y);
 
-      doc.font('Helvetica').fontSize(10);
-
-      doc.text(`Campaign      : ${receipt.campaignTitle}`);
-
-      doc.text(
-        `Amount        : ${receipt.currency} ${formatAmount(receipt.amount)}`,
-      );
-
-      doc.text(`Status        : ${receipt.donation?.status ?? 'PAID'}`);
-
-      if (receipt.donation?.paidAt) {
-        doc.text(
-          `Paid Date     : ${formatDateTime(receipt.donation.paidAt)}`,
-        );
-      } else {
-        doc.text(`Paid Date     : ${formatDateTime(receipt.issuedAt)}`);
-      }
-
-      if (receipt.donation?.message) {
-        doc.moveDown(0.5);
-
-        doc
-          .font('Helvetica-Bold')
-          .text('Donor Message');
-
-        doc
-          .font('Helvetica')
-          .text(receipt.donation.message, {
-            width: 495,
-          });
-      }
-
-      doc.moveDown(1);
-
-      drawLine();
-
-      /*
-       * Payment confirmation
-       */
-      doc.moveDown(0.8);
-
-      doc
-        .font('Helvetica-Bold')
-        .fontSize(11)
-        .text('PAYMENT CONFIRMATION');
-
-      doc.moveDown(0.5);
-
-      doc
+      doc.fillColor(DARK)
         .font('Helvetica')
-        .fontSize(10)
+        .fontSize(8.5)
         .text(
           'This receipt confirms that the donation stated above has been successfully received.',
-          {
-            width: 495,
-            align: 'left',
-          },
+          LEFT,
+          y,
+          { width: WIDTH },
         );
+      y = doc.y + 10;
 
-      doc.moveDown(1.5);
-
-      /*
-       * Thank you message
-       */
-      doc
+      // =====================================================
+      // THANK YOU
+      // =====================================================
+      doc.fillColor(BLUE)
         .font('Helvetica-Bold')
         .fontSize(12)
-        .text('Thank You for Your Generosity', {
+        .text('Thank You for Your Generosity', LEFT, y, {
+          width: WIDTH,
           align: 'center',
         });
+      y = doc.y + 4;
 
-      doc.moveDown(0.5);
-
-      doc
+      doc.fillColor(GRAY)
         .font('Helvetica')
-        .fontSize(10)
+        .fontSize(8)
         .text(
           'Your contribution supports Islamic Relief Indonesia in creating meaningful and sustainable impact for communities in need.',
+          LEFT + 25,
+          y,
           {
-            width: 495,
+            width: WIDTH - 50,
             align: 'center',
           },
         );
-      /*
-       * Verification QR
-       */
-      doc.moveDown(1);
+      y = doc.y + 13;
 
-      drawLine();
+      // =====================================================
+      // QR VERIFICATION BOX
+      // =====================================================
+      const qrBoxHeight = 170;
+      const qrBoxY = y;
 
-      doc.moveDown(0.8);
+      doc.save()
+        .fillColor('#F8FAFC')
+        .roundedRect(LEFT, qrBoxY, WIDTH, qrBoxHeight, 6)
+        .fill()
+        .restore();
 
-      doc
+      doc.save()
+        .lineWidth(0.8)
+        .strokeColor(LIGHT_GRAY)
+        .roundedRect(LEFT, qrBoxY, WIDTH, qrBoxHeight, 6)
+        .stroke()
+        .restore();
+
+      doc.fillColor(BLUE)
         .font('Helvetica-Bold')
         .fontSize(10)
-        .text('RECEIPT VERIFICATION', {
+        .text('RECEIPT VERIFICATION', LEFT, qrBoxY + 11, {
+          width: WIDTH,
           align: 'center',
         });
 
-      doc.moveDown(0.4);
-
-      doc
+      doc.fillColor(GRAY)
         .font('Helvetica')
-        .fontSize(8)
-        .text(
-          'Scan the QR code to verify this receipt.',
-          {
-            align: 'center',
-          },
-        );
+        .fontSize(7.5)
+        .text('Scan the QR code to verify this receipt.', LEFT, qrBoxY + 28, {
+          width: WIDTH,
+          align: 'center',
+        });
 
-      doc.image(
-        qrBuffer,
-        237,
-        doc.y + 8,
-        {
-          width: 120,
-          height: 120,
-        },
-      );
+      const QR_SIZE = 100;
+      const QR_X = LEFT + WIDTH / 2 - QR_SIZE / 2;
+      const QR_Y = qrBoxY + 46;
 
-      doc.moveDown(9);
+      doc.image(qrBuffer, QR_X, QR_Y, {
+        width: QR_SIZE,
+        height: QR_SIZE,
+      });
 
-      doc
+      doc.fillColor(GRAY)
         .font('Helvetica')
-        .fontSize(7)
-        .text(
-          verificationUrl,
-          {
-            align: 'center',
-            width: 495,
-          },
-        );
-      /*
-       * Footer
-       */
-      doc.moveDown(2);
+        .fontSize(6)
+        .text(verificationUrl, LEFT + 15, qrBoxY + 153, {
+          width: WIDTH - 30,
+          align: 'center',
+          lineBreak: false,
+        });
 
-      drawLine();
+      y = qrBoxY + qrBoxHeight + 13;
 
-      doc.moveDown(0.5);
+      // =====================================================
+      // FOOTER
+      // =====================================================
+      drawLine(y);
+      y += 10;
 
-      doc
+      doc.fillColor(GRAY)
         .font('Helvetica')
-        .fontSize(8)
+        .fontSize(6.8)
         .text(
           'This document was generated electronically by the Islamic Relief Indonesia Digital Philanthropy Platform.',
+          LEFT,
+          y,
           {
+            width: WIDTH,
             align: 'center',
           },
         );
+      y = doc.y + 4;
 
-      doc
-        .moveDown(0.3)
-        .text(
-          `Receipt ID: ${receipt.id}`,
-          {
-            align: 'center',
-          },
-        );
+      doc.fillColor(GRAY)
+        .font('Helvetica')
+        .fontSize(6.8)
+        .text(`Receipt ID: ${receipt.id}`, LEFT, y, {
+          width: WIDTH,
+          align: 'center',
+        });
+      y = doc.y + 10;
+
+      drawLine(y, BLUE);
+      y += 8;
+
+      doc.fillColor(BLUE)
+        .font('Helvetica-Bold')
+        .fontSize(7)
+        .text('www.islamic-relief.or.id', LEFT, y, {
+          width: 220,
+          align: 'left',
+        });
+
+      doc.fillColor(GRAY)
+        .font('Helvetica')
+        .fontSize(7)
+        .text('Islamic Relief Indonesia', 330, y, {
+          width: 220,
+          align: 'right',
+        });
 
       doc.end();
     });
   }
+
 }
