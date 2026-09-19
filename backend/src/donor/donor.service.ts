@@ -4,13 +4,14 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { DonationStatus } from '@prisma/client';
 
 import {
   DonorStatus,
   DonorType,
   DonationStatus,
   Prisma,
-} import { DonationStatus, Prisma } from '@prisma/client';
+} from '@prisma/client';
 
 import { PrismaService } from '../prisma.service';
 
