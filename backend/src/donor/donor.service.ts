@@ -593,7 +593,7 @@ export class DonorService {
       this.prisma.donation.findFirst({
         where: {
           donorId: id,
-          status: DonorDonationStatus.PAID,
+          status: DonationStatus.PAID,
         },
 
         orderBy: {
@@ -611,7 +611,7 @@ export class DonorService {
       this.prisma.donation.findFirst({
         where: {
           donorId: id,
-          status: DonorDonationStatus.PAID,
+          status: DonationStatus.PAID,
         },
 
         orderBy: {
@@ -629,7 +629,7 @@ export class DonorService {
       this.prisma.donation.findMany({
         where: {
           donorId: id,
-          status: DonorDonationStatus.PAID,
+          status: DonationStatus.PAID,
         },
 
         distinct: [
