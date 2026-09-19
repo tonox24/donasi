@@ -199,7 +199,40 @@ export class ReceiptService {
 
     return receipt;
   }
+async verifyReceipt(receiptNumber: string) {
+  const receipt = await this.prisma.receipt.findUnique({
+    where: {
+      receiptNumber,
+    },
+    include: {
+      donation: {
+        select: {
+          id: true,
+          status: true,
+          paidAt: true,
+        },
+      },
+    },
+  });
 
+  if (!receipt) {
+    throw new NotFoundException(
+      'Receipt not found',
+    );
+  }
+
+  return {
+    valid: true,
+    receiptNumber: receipt.receiptNumber,
+    issuedAt: receipt.issuedAt,
+    donorName: receipt.donorName,
+    amount: receipt.amount.toString(),
+    currency: receipt.currency,
+    campaignTitle: receipt.campaignTitle,
+    status: receipt.donation?.status ?? 'PAID',
+    paidAt: receipt.donation?.paidAt ?? null,
+  };
+}
   /**
    * Generate a professional A4 donation receipt.
    *
