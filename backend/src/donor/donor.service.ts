@@ -10,9 +10,10 @@ import {
   DonorType,
   DonationStatus,
   Prisma,
-} from '@prisma/client';
+} import { DonationStatus, Prisma } from '@prisma/client';
 
 import { PrismaService } from '../prisma.service';
+
 
 import { CreateDonorDto } from './dto/create-donor.dto';
 import { UpdateDonorDto } from './dto/update-donor.dto';
@@ -542,126 +543,211 @@ export class DonorService {
     });
   }
 
-  // =========================================================
-  // DONOR SUMMARY
-  // =========================================================
+  // =============================================================
+// DONOR SUMMARY
+// =============================================================
 
-  async getSummary(id: string) {
-    const donor =
-      await this.prisma.donorProfile.findUnique({
-        where: {
-          id,
-        },
+async getSummary(id: string) {
+  const donor = await this.prisma.donorProfile.findUnique({
+    where: {
+      id,
+    },
+    select: {
+      id: true,
+      fullName: true,
+      email: true,
+      phone: true,
+      donorType: true,
+      status: true,
+      createdAt: true,
+    },
+  });
 
-        select: {
-          id: true,
-          fullName: true,
-          email: true,
-          phone: true,
-          donorType: true,
-          status: true,
-          createdAt: true,
-        },
-      });
-
-    if (!donor) {
-      throw new NotFoundException(
-        'Donor not found',
-      );
-    }
-
-    const [
-      aggregate,
-      firstDonation,
-      lastDonation,
-      campaignCount,
-    ] = await this.prisma.$transaction([
-      this.prisma.donation.aggregate({
-        where: {
-          donorId: id,
-          status: DonationStatus.PAID,
-        },
-
-        _count: {
-          _all: true,
-        },
-
-        _sum: {
-          amount: true,
-        },
-      }),
-
-      this.prisma.donation.findFirst({
-        where: {
-          donorId: id,
-          status: DonationStatus.PAID,
-        },
-
-        orderBy: {
-          paidAt: 'asc',
-        },
-
-        select: {
-          id: true,
-          amount: true,
-          paidAt: true,
-          campaignId: true,
-        },
-      }),
-
-      this.prisma.donation.findFirst({
-        where: {
-          donorId: id,
-          status: DonationStatus.PAID,
-        },
-
-        orderBy: {
-          paidAt: 'desc',
-        },
-
-        select: {
-          id: true,
-          amount: true,
-          paidAt: true,
-          campaignId: true,
-        },
-      }),
-
-      this.prisma.donation.findMany({
-        where: {
-          donorId: id,
-          status: DonationStatus.PAID,
-        },
-
-        distinct: [
-          'campaignId',
-        ],
-
-        select: {
-          campaignId: true,
-        },
-      }),
-    ]);
-
-    return {
-      donor,
-
-      statistics: {
-        totalDonations:
-          aggregate._count._all,
-
-        totalDonationAmount:
-          aggregate._sum.amount ?? 0,
-
-        campaignCount:
-          campaignCount.length,
-
-        firstDonation,
-
-        lastDonation,
-      },
-    };
+  if (!donor) {
+    throw new NotFoundException('Donor not found');
   }
+
+  const [
+    totalDonations,
+    paidDonations,
+    pendingDonations,
+    failedDonations,
+    cancelledDonations,
+    refundedDonations,
+    paidAggregate,
+    firstDonation,
+    lastDonation,
+    campaignCount,
+  ] = await this.prisma.$transaction([
+    // ---------------------------------------------------------
+    // ALL DONATIONS
+    // ---------------------------------------------------------
+    this.prisma.donation.count({
+      where: {
+        donorId: id,
+      },
+    }),
+
+    // ---------------------------------------------------------
+    // PAID DONATIONS
+    // ---------------------------------------------------------
+    this.prisma.donation.count({
+      where: {
+        donorId: id,
+        status: DonationStatus.PAID,
+      },
+    }),
+
+    // ---------------------------------------------------------
+    // PENDING DONATIONS
+    // ---------------------------------------------------------
+    this.prisma.donation.count({
+      where: {
+        donorId: id,
+        status: DonationStatus.PENDING,
+      },
+    }),
+
+    // ---------------------------------------------------------
+    // FAILED DONATIONS
+    // ---------------------------------------------------------
+    this.prisma.donation.count({
+      where: {
+        donorId: id,
+        status: DonationStatus.FAILED,
+      },
+    }),
+
+    // ---------------------------------------------------------
+    // CANCELLED DONATIONS
+    // ---------------------------------------------------------
+    this.prisma.donation.count({
+      where: {
+        donorId: id,
+        status: DonationStatus.CANCELLED,
+      },
+    }),
+
+    // ---------------------------------------------------------
+    // REFUNDED DONATIONS
+    // ---------------------------------------------------------
+    this.prisma.donation.count({
+      where: {
+        donorId: id,
+        status: DonationStatus.REFUNDED,
+      },
+    }),
+
+    // ---------------------------------------------------------
+    // TOTAL VALUE OF PAID DONATIONS
+    // ---------------------------------------------------------
+    this.prisma.donation.aggregate({
+      where: {
+        donorId: id,
+        status: DonationStatus.PAID,
+      },
+      _sum: {
+        amount: true,
+      },
+    }),
+
+    // ---------------------------------------------------------
+    // FIRST DONATION
+    // All donation history, regardless of payment status
+    // ---------------------------------------------------------
+    this.prisma.donation.findFirst({
+      where: {
+        donorId: id,
+      },
+      orderBy: {
+        createdAt: 'asc',
+      },
+      select: {
+        id: true,
+        amount: true,
+        status: true,
+        createdAt: true,
+        paidAt: true,
+        campaignId: true,
+      },
+    }),
+
+    // ---------------------------------------------------------
+    // LAST DONATION
+    // All donation history, regardless of payment status
+    // ---------------------------------------------------------
+    this.prisma.donation.findFirst({
+      where: {
+        donorId: id,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+      select: {
+        id: true,
+        amount: true,
+        status: true,
+        createdAt: true,
+        paidAt: true,
+        campaignId: true,
+      },
+    }),
+
+    // ---------------------------------------------------------
+    // UNIQUE CAMPAIGNS
+    // ---------------------------------------------------------
+    this.prisma.donation.findMany({
+      where: {
+        donorId: id,
+      },
+      distinct: ['campaignId'],
+      select: {
+        campaignId: true,
+      },
+    }),
+  ]);
+
+  // -----------------------------------------------------------
+  // RETURN DONOR CRM SUMMARY
+  // -----------------------------------------------------------
+
+  return {
+    donor,
+
+    statistics: {
+      // Total donation records created
+      totalDonations,
+
+      // Successful donations
+      paidDonations,
+
+      // Donations waiting for payment
+      pendingDonations,
+
+      // Donations explicitly marked failed
+      failedDonations,
+
+      // Cancelled donations
+      cancelledDonations,
+
+      // Refunded donations
+      refundedDonations,
+
+      // Only PAID donation amount is counted as received funds
+      totalDonationAmount:
+        paidAggregate._sum.amount?.toString() ?? '0',
+
+      // Number of different campaigns this donor has interacted with
+      campaignCount: campaignCount.length,
+
+      // First donation activity
+      firstDonation,
+
+      // Latest donation activity
+      lastDonation,
+    },
+  };
+}
 
   // =========================================================
   // DELETE DONOR
