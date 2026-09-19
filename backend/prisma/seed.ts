@@ -18,6 +18,12 @@ const permissions: [string, string][] = [
   ['program.update', 'Update programs'],
   ['program.delete', 'Delete programs'],
 
+  // Donor CRM
+  ['donor.view', 'View donors'],
+  ['donor.create', 'Create donors'],
+  ['donor.update', 'Update donors'],
+  ['donor.delete', 'Delete donors'],
+  
   // Campaign
 ['campaign.view', 'View campaigns'],
 ['campaign.create', 'Create campaigns'],
@@ -338,6 +344,10 @@ async function main() {
       'campaign.complete',
       'campaign.cancel',
 
+      'donor.view',
+      'donor.create',
+      'donor.update',
+
       'beneficiary.view',
 
       'donation.view',
@@ -431,6 +441,11 @@ async function main() {
       'beneficiary.create',
       'beneficiary.update',
       'beneficiary.delete',
+
+      'donor.view',
+      'donor.create',
+      'donor.update',
+      'donor.delete',
 
       'donation.view',
 
