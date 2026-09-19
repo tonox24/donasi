@@ -8,6 +8,7 @@ import {
 import {
   DonorStatus,
   DonorType,
+  DonationStatus,
   Prisma,
 } from '@prisma/client';
 
@@ -578,7 +579,7 @@ export class DonorService {
       this.prisma.donation.aggregate({
         where: {
           donorId: id,
-          status: DonorDonationStatus.PAID,
+          status: DonationStatus.PAID,
         },
 
         _count: {
