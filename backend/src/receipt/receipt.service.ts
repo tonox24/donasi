@@ -367,8 +367,6 @@ async verifyReceipt(receiptNumber: string) {
       if (hasLogo) {
         doc.image(logoPath, LEFT, 30, {
           fit: [68, 68],
-          align: 'left',
-          valign: 'top',
         });
       } else {
         // Safe fallback so the receipt remains usable if the asset is missing.
@@ -604,8 +602,8 @@ async verifyReceipt(receiptNumber: string) {
       /*
        * QR VERIFICATION PANEL
        *
-       * Important: QR and URL are placed in a fixed-height panel.
-       * This prevents the previous overlap with the footer.
+       * Fixed-height panel with absolute positioning.
+       * This prevents QR code, URL, and footer overlap.
        */
       const qrPanelY = afterDetailsY + 120;
       const qrPanelH = 190;
@@ -616,8 +614,17 @@ async verifyReceipt(receiptNumber: string) {
         .fillAndStroke(LIGHT, BORDER)
         .restore();
 
-      sectionTitle('Receipt Verification', qrPanelY + 14);
+      /* Panel title */
+      doc
+        .fillColor(BLUE)
+        .font('Helvetica-Bold')
+        .fontSize(10.5)
+        .text('RECEIPT VERIFICATION', LEFT, qrPanelY + 14, {
+          width: CONTENT_W,
+          align: 'center',
+        });
 
+      /* Instruction */
       doc
         .fillColor(GREY)
         .font('Helvetica')
@@ -627,6 +634,7 @@ async verifyReceipt(receiptNumber: string) {
           align: 'center',
         });
 
+      /* QR CODE */
       const QR_SIZE = 118;
       const QR_X = (PAGE_W - QR_SIZE) / 2;
       const QR_Y = qrPanelY + 50;
@@ -636,15 +644,22 @@ async verifyReceipt(receiptNumber: string) {
         height: QR_SIZE,
       });
 
+      /* Verification note. The QR contains the full URL. */
       doc
         .fillColor(GREY)
         .font('Helvetica')
-        .fontSize(6.8)
-        .text(verificationUrl, LEFT + 15, qrPanelY + 171, {
-          width: CONTENT_W - 30,
-          align: 'center',
-          lineBreak: false,
-        });
+        .fontSize(7)
+        .text(
+          'This receipt can be verified online by scanning the QR code.',
+          LEFT + 15,
+          qrPanelY + 171,
+          {
+            width: CONTENT_W - 30,
+            align: 'center',
+          },
+        );
+
+      doc.fillColor('#000000');
 
       /*
        * FOOTER
@@ -692,7 +707,19 @@ async verifyReceipt(receiptNumber: string) {
           width: 100,
           align: 'center',
         });
+doc
+  .font('Helvetica')
+  .fontSize(7)
+  .fillColor('#444444')
+  .text(
+    'This receipt can be verified online by scanning the QR code.',
+    {
+      width: 495,
+      align: 'center',
+    },
+  );
 
+doc.fillColor('#000000');
       doc
         .fillColor(BLUE)
         .font('Helvetica-BoldOblique')
