@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { DonationStatus } from '@prisma/client';
+
 
 import {
   DonorStatus,
@@ -14,8 +14,6 @@ import {
 } from '@prisma/client';
 
 import { PrismaService } from '../prisma.service';
-
-
 import { CreateDonorDto } from './dto/create-donor.dto';
 import { UpdateDonorDto } from './dto/update-donor.dto';
 
