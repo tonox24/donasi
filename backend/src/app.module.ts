@@ -15,6 +15,7 @@ import { BeneficiaryModule } from './beneficiary/beneficiary.module';
 import { DonationModule } from './donation/donation.module';
 import { PaymentModule } from './payment/payment.module';
 import { ReceiptModule } from './receipt/receipt.module';
+import { DonorModule } from './donor/donor.module';
 
 @Module({
   imports: [
@@ -43,6 +44,8 @@ import { ReceiptModule } from './receipt/receipt.module';
     PaymentModule,
 
     ReceiptModule,
+
+    DonorModule,
   ],
 
   controllers: [
