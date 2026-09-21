@@ -16,6 +16,8 @@ import { CurrentUser } from '../auth/current-user.decorator';
 
 import { Permissions } from '../rbac/permissions.decorator';
 import { PermissionsGuard } from '../rbac/permissions.guard';
+import { Body } from '@nestjs/common';
+import { VoidFinanceLedgerDto } from './dto/void-finance-ledger.dto';
 
 @Controller('finance')
 @UseGuards(
@@ -82,20 +84,24 @@ export class FinanceController {
   // =========================================================
 
   @Patch('ledger/:id/void')
-  @Permissions('finance.manage')
-  voidLedger(
-    @Param(
-      'id',
-      new ParseUUIDPipe(),
-    )
-    id: string,
+@Permissions('finance.manage')
+voidLedger(
+  @Param(
+    'id',
+    new ParseUUIDPipe(),
+  )
+  id: string,
 
-    @CurrentUser()
-    user: { id: string },
-  ) {
-    return this.financeService.voidLedger(
-      id,
-      user.id,
-    );
-  }
+  @Body()
+  dto: VoidFinanceLedgerDto,
+
+  @CurrentUser()
+  user: { id: string },
+) {
+  return this.financeService.voidLedger(
+    id,
+    user.id,
+    dto.reason,
+  );
+}
 }
