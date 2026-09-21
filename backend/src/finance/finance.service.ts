@@ -325,11 +325,11 @@ export class FinanceService {
       adjustment._sum.amount ?? 0;
 
     const netBalance =
-      Number(incomeAmount) -
-      Number(expenseAmount) -
-      Number(refundAmount) -
-      Number(feeAmount) +
-      Number(adjustmentAmount);
+  incomeAmount
+    .minus(expenseAmount)
+    .minus(refundAmount)
+    .minus(feeAmount)
+    .plus(adjustmentAmount);
 
     return {
       period: {
