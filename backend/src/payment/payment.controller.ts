@@ -12,8 +12,11 @@ import { CreatePaymentDto } from './dto/create-payment.dto';
 import { MarkPaymentPaidDto } from './dto/mark-payment-paid.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { MarkPaymentFailedDto } from './dto/mark-payment-failed.dto';
+import { RefundPaymentDto } from './dto/refund-payment.dto';
 
-
+import { CurrentUser } from '../auth/current-user.decorator';
+import { Permissions } from '../rbac/permissions.decorator';
+import { PermissionsGuard } from '../rbac/permissions.guard';
 
 @Controller('payments')
 export class PaymentController {
@@ -67,4 +70,30 @@ markAsFailed(
   findOne(@Param('id', new ParseUUIDPipe()) id: string) {
     return this.paymentService.findOne(id);
   }
+  @Post(':id/refund')
+@UseGuards(
+  JwtAuthGuard,
+  PermissionsGuard,
+)
+@Permissions('finance.manage')
+refund(
+  @Param(
+    'id',
+    new ParseUUIDPipe(),
+  )
+  id: string,
+
+  @Body()
+  dto: RefundPaymentDto,
+
+  @CurrentUser()
+  user: { id: string },
+) {
+  return this.paymentService.refund(
+    id,
+    dto.reason,
+    user.id,
+    dto.providerTransactionId,
+  );
+}
 }
