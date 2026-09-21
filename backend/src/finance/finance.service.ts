@@ -310,20 +310,25 @@ export class FinanceService {
     ]);
 
     const incomeAmount =
-      income._sum.amount ?? 0;
+  income._sum.amount ??
+  new Prisma.Decimal(0);
 
-    const expenseAmount =
-      expense._sum.amount ?? 0;
+const expenseAmount =
+  expense._sum.amount ??
+  new Prisma.Decimal(0);
 
-    const refundAmount =
-      refund._sum.amount ?? 0;
+const refundAmount =
+  refund._sum.amount ??
+  new Prisma.Decimal(0);
 
-    const feeAmount =
-      fee._sum.amount ?? 0;
+const feeAmount =
+  fee._sum.amount ??
+  new Prisma.Decimal(0);
 
-    const adjustmentAmount =
-      adjustment._sum.amount ?? 0;
-
+const adjustmentAmount =
+  adjustment._sum.amount ??
+  new Prisma.Decimal(0);
+    
     const netBalance =
   incomeAmount
     .minus(expenseAmount)
@@ -359,87 +364,123 @@ export class FinanceService {
     };
   }
 
-  // =========================================================
-  // VOID LEDGER
-  // =========================================================
+ // =========================================================
+// VOID LEDGER
+// =========================================================
 
-  async voidLedger(
-    id: string,
-    userId: string,
+async voidLedger(
+  id: string,
+  userId: string,
+  reason: string,
+) {
+  const cleanReason =
+    reason.trim();
+
+  if (!cleanReason) {
+    throw new BadRequestException(
+      'Void reason is required',
+    );
+  }
+
+  const existing =
+    await this.prisma.financeLedger.findUnique({
+      where: {
+        id,
+      },
+    });
+
+  if (!existing) {
+    throw new NotFoundException(
+      'Finance ledger not found',
+    );
+  }
+
+  if (
+    existing.status ===
+    FinanceLedgerStatus.VOIDED
   ) {
-    const existing =
-      await this.prisma.financeLedger.findUnique({
-        where: {
-          id,
-        },
-      });
+    throw new BadRequestException(
+      'Finance ledger is already voided',
+    );
+  }
 
-    if (!existing) {
-      throw new NotFoundException(
-        'Finance ledger not found',
-      );
-    }
+  const ledger =
+    await this.prisma.$transaction(
+      async (tx) => {
+        const updated =
+          await tx.financeLedger.update({
+            where: {
+              id,
+            },
 
-    if (
-      existing.status ===
-      FinanceLedgerStatus.VOIDED
-    ) {
-      throw new BadRequestException(
-        'Finance ledger is already voided',
-      );
-    }
-
-    const ledger =
-      await this.prisma.$transaction(
-        async (tx) => {
-          const updated =
-            await tx.financeLedger.update({
-              where: {
-                id,
-              },
-
-              data: {
-                status:
-                  FinanceLedgerStatus.VOIDED,
-              },
-            });
-
-          await tx.auditLog.create({
             data: {
-              action:
-                'FINANCE_LEDGER_VOIDED',
-
-              entity:
-                'FinanceLedger',
-
-              entityId:
-                updated.id,
-
-              userId,
+              status:
+                FinanceLedgerStatus.VOIDED,
 
               metadata: {
-                reference:
-                  updated.reference,
+                ...(existing.metadata &&
+                typeof existing.metadata ===
+                  'object' &&
+                !Array.isArray(
+                  existing.metadata,
+                )
+                  ? existing.metadata
+                  : {}),
 
-                type:
-                  updated.type,
+                voidReason:
+                  cleanReason,
 
-                amount:
-                  updated.amount.toString(),
+                voidedAt:
+                  new Date().toISOString(),
 
-                previousStatus:
-                  existing.status,
-
-                newStatus:
-                  updated.status,
+                voidedBy:
+                  userId,
               },
             },
           });
 
-          return updated;
-        },
-      );
+        await tx.auditLog.create({
+          data: {
+            action:
+              'FINANCE_LEDGER_VOIDED',
 
-    return ledger;
-  }
+            entity:
+              'FinanceLedger',
+
+            entityId:
+              updated.id,
+
+            userId,
+
+            metadata: {
+              reference:
+                updated.reference,
+
+              type:
+                updated.type,
+
+              amount:
+                updated.amount.toString(),
+
+              currency:
+                updated.currency,
+
+              previousStatus:
+                existing.status,
+
+              newStatus:
+                updated.status,
+
+              reason:
+                cleanReason,
+            },
+          },
+        });
+
+        return updated;
+      },
+    );
+
+  return ledger;
+}
 }
