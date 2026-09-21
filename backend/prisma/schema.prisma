@@ -23,6 +23,19 @@ enum DonorType {
   OTHER
 }
 
+enum FinanceLedgerType {
+  INCOME
+  EXPENSE
+  REFUND
+  FEE
+  ADJUSTMENT
+}
+
+enum FinanceLedgerStatus {
+  POSTED
+  VOIDED
+}
+
 enum DonorStatus {
   ACTIVE
   INACTIVE
@@ -188,6 +201,46 @@ model AuditLog {
   @@index([action])
 }
 
+model FinanceLedger {
+  id                   String              @id @default(uuid())
+
+  transactionDate      DateTime            @default(now())
+
+  type                 FinanceLedgerType
+  status               FinanceLedgerStatus @default(POSTED)
+
+  reference            String              @unique
+
+  donationId           String?
+  paymentTransactionId String?
+  receiptId            String?
+  campaignId           String?
+
+  description          String?
+
+  amount               Decimal             @db.Decimal(18, 2)
+  currency             String              @default("IDR")
+
+  metadata             Json?
+
+  createdById           String?
+
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+
+  donation             Donation?           @relation(fields: [donationId], references: [id], onDelete: Restrict)
+  paymentTransaction   PaymentTransaction? @relation(fields: [paymentTransactionId], references: [id], onDelete: Restrict)
+  receipt              Receipt?            @relation(fields: [receiptId], references: [id], onDelete: Restrict)
+  campaign             Campaign?           @relation(fields: [campaignId], references: [id], onDelete: Restrict)
+
+  @@index([transactionDate])
+  @@index([type])
+  @@index([status])
+  @@index([donationId])
+  @@index([paymentTransactionId])
+  @@index([campaignId])
+}
+
 /*
 |--------------------------------------------------------------------------
 | PROGRAM
@@ -303,6 +356,7 @@ model Campaign {
   beneficiaries CampaignBeneficiary[]
   donations     Donation[]
   impacts       CampaignImpact[]
+  financeLedgers FinanceLedger[]
 
   @@index([status])
   @@index([programId])
@@ -448,6 +502,7 @@ model Donation {
   payments PaymentTransaction[]
   impacts  DonationImpact[]
   receipts Receipt[]
+  financeLedgers FinanceLedger[]
 
   @@index([donorId])
   @@index([campaignId])
@@ -484,6 +539,7 @@ model PaymentTransaction {
   updatedAt DateTime @updatedAt
 
   donation Donation @relation(fields: [donationId], references: [id], onDelete: Restrict)
+  financeLedgers FinanceLedger[]
 
   @@index([donationId])
   @@index([provider])
@@ -573,6 +629,7 @@ model Receipt {
   updatedAt DateTime @updatedAt
 
   donation Donation @relation(fields: [donationId], references: [id], onDelete: Restrict)
+  financeLedgers FinanceLedger[]
   @@index([campaignId])
   @@index([issuedAt])
   @@index([donorEmail])
