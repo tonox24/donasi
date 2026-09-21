@@ -538,6 +538,454 @@ async markAsPaid(
     },
   );
 }
+
+  /**
+ * Refund a PAID payment.
+ *
+ * Flow:
+ *
+ * Payment PAID
+ * Donation PAID
+ * Campaign collectedAmount
+ *
+ * becomes:
+ *
+ * Payment REFUNDED
+ * Donation REFUNDED
+ * Campaign collectedAmount decremented
+ * Finance Ledger REFUND posted
+ * Audit logs created
+ *
+ * The original INCOME ledger is NOT deleted
+ * and NOT voided.
+ */
+async refund(
+  id: string,
+  reason: string,
+  userId: string,
+  providerTransactionId?: string,
+) {
+  const cleanReason = reason.trim();
+
+  if (!cleanReason) {
+    throw new BadRequestException(
+      'Refund reason is required',
+    );
+  }
+
+  const payment =
+    await this.prisma.paymentTransaction.findUnique({
+      where: {
+        id,
+      },
+
+      include: {
+        donation: {
+          include: {
+            campaign: true,
+          },
+        },
+      },
+    });
+
+  if (!payment) {
+    throw new NotFoundException(
+      'Payment not found',
+    );
+  }
+
+  if (payment.status === 'REFUNDED') {
+    throw new BadRequestException(
+      'Payment has already been refunded',
+    );
+  }
+
+  if (payment.status !== 'PAID') {
+    throw new BadRequestException(
+      `Only PAID payments can be refunded. Current status: ${payment.status}`,
+    );
+  }
+
+  if (payment.donation.status !== 'PAID') {
+    throw new BadRequestException(
+      `Only PAID donations can be refunded. Current status: ${payment.donation.status}`,
+    );
+  }
+
+  const originalIncome =
+    await this.prisma.financeLedger.findFirst({
+      where: {
+        paymentTransactionId: payment.id,
+
+        type: 'INCOME',
+
+        status: 'POSTED',
+      },
+    });
+
+  if (!originalIncome) {
+    throw new BadRequestException(
+      'Posted income ledger for this payment was not found',
+    );
+  }
+
+  const refundedAt = new Date();
+
+  return this.prisma.$transaction(
+    async (tx) => {
+      /**
+       * 1. Update Payment
+       *
+       * Only PAID payment can become REFUNDED.
+       */
+      const paymentUpdate =
+        await tx.paymentTransaction.updateMany({
+          where: {
+            id,
+
+            status: 'PAID',
+          },
+
+          data: {
+            status: 'REFUNDED',
+
+            providerTransactionId:
+              providerTransactionId ??
+              payment.providerTransactionId,
+
+            rawResponse: {
+              refund: true,
+
+              reason: cleanReason,
+
+              refundedAt:
+                refundedAt.toISOString(),
+            },
+          },
+        });
+
+      if (paymentUpdate.count !== 1) {
+        throw new BadRequestException(
+          'Payment is no longer eligible for refund',
+        );
+      }
+
+      /**
+       * 2. Update Donation
+       */
+      const updatedDonation =
+        await tx.donation.updateMany({
+          where: {
+            id: payment.donationId,
+
+            status: 'PAID',
+          },
+
+          data: {
+            status: 'REFUNDED',
+          },
+        });
+
+      if (updatedDonation.count !== 1) {
+        throw new BadRequestException(
+          'Donation is no longer eligible for refund',
+        );
+      }
+
+      /**
+       * 3. Decrease Campaign collected amount.
+       *
+       * The condition prevents the amount from
+       * becoming negative.
+       */
+      const campaignUpdate =
+        await tx.campaign.updateMany({
+          where: {
+            id:
+              payment.donation.campaignId,
+
+            collectedAmount: {
+              gte: payment.amount,
+            },
+          },
+
+          data: {
+            collectedAmount: {
+              decrement:
+                payment.amount,
+            },
+          },
+        });
+
+      if (campaignUpdate.count !== 1) {
+        throw new BadRequestException(
+          'Campaign collected amount is insufficient for this refund',
+        );
+      }
+
+      /**
+       * 4. Create REFUND Finance Ledger
+       *
+       * The original INCOME ledger remains untouched.
+       */
+      const refundLedger =
+        await tx.financeLedger.create({
+          data: {
+            type: 'REFUND',
+
+            status: 'POSTED',
+
+            reference:
+              `REFUND-${payment.id}`,
+
+            donationId:
+              payment.donationId,
+
+            paymentTransactionId:
+              payment.id,
+
+            receiptId:
+              originalIncome.receiptId,
+
+            campaignId:
+              payment.donation.campaignId,
+
+            description:
+              `Donation refund - ${payment.donation.donorName}`,
+
+            amount:
+              payment.amount,
+
+            currency:
+              payment.currency,
+
+            createdById:
+              userId,
+
+            metadata: {
+              source:
+                'DONATION_REFUND',
+
+              originalIncomeLedgerId:
+                originalIncome.id,
+
+              originalIncomeReference:
+                originalIncome.reference,
+
+              provider:
+                payment.provider,
+
+              providerTransactionId:
+                providerTransactionId ??
+                payment.providerTransactionId,
+
+              transactionReference:
+                payment.transactionReference,
+
+              paymentMethod:
+                payment.paymentMethod,
+
+              donorName:
+                payment.donation.donorName,
+
+              campaignTitle:
+                payment.donation.campaign.title,
+
+              reason:
+                cleanReason,
+
+              refundedAt:
+                refundedAt.toISOString(),
+            },
+          },
+        });
+
+      /**
+       * 5. Audit Payment
+       */
+      await tx.auditLog.create({
+        data: {
+          action:
+            'PAYMENT_REFUNDED',
+
+          entity:
+            'PaymentTransaction',
+
+          entityId:
+            payment.id,
+
+          userId,
+
+          metadata: {
+            donationId:
+              payment.donationId,
+
+            campaignId:
+              payment.donation.campaignId,
+
+            amount:
+              payment.amount.toString(),
+
+            currency:
+              payment.currency,
+
+            refundLedgerId:
+              refundLedger.id,
+
+            refundLedgerReference:
+              refundLedger.reference,
+
+            reason:
+              cleanReason,
+
+            refundedAt:
+              refundedAt.toISOString(),
+          },
+        },
+      });
+
+      /**
+       * 6. Audit Donation
+       */
+      await tx.auditLog.create({
+        data: {
+          action:
+            'DONATION_REFUNDED',
+
+          entity:
+            'Donation',
+
+          entityId:
+            payment.donationId,
+
+          userId,
+
+          metadata: {
+            paymentId:
+              payment.id,
+
+            campaignId:
+              payment.donation.campaignId,
+
+            amount:
+              payment.amount.toString(),
+
+            currency:
+              payment.donation.currency,
+
+            refundLedgerId:
+              refundLedger.id,
+
+            refundLedgerReference:
+              refundLedger.reference,
+
+            reason:
+              cleanReason,
+          },
+        },
+      });
+
+      /**
+       * 7. Audit Finance Ledger
+       */
+      await tx.auditLog.create({
+        data: {
+          action:
+            'FINANCE_REFUND_POSTED',
+
+          entity:
+            'FinanceLedger',
+
+          entityId:
+            refundLedger.id,
+
+          userId,
+
+          metadata: {
+            reference:
+              refundLedger.reference,
+
+            type:
+              refundLedger.type,
+
+            status:
+              refundLedger.status,
+
+            amount:
+              refundLedger.amount.toString(),
+
+            currency:
+              refundLedger.currency,
+
+            donationId:
+              payment.donationId,
+
+            paymentTransactionId:
+              payment.id,
+
+            campaignId:
+              payment.donation.campaignId,
+
+            originalIncomeLedgerId:
+              originalIncome.id,
+
+            reason:
+              cleanReason,
+          },
+        },
+      });
+
+      /**
+       * 8. Get updated records
+       */
+      const updatedPayment =
+        await tx.paymentTransaction.findUnique({
+          where: {
+            id,
+          },
+        });
+
+      const updatedCampaign =
+        await tx.campaign.findUnique({
+          where: {
+            id:
+              payment.donation.campaignId,
+          },
+
+          select: {
+            id: true,
+            collectedAmount: true,
+          },
+        });
+
+      return {
+        payment:
+          updatedPayment,
+
+        donation: {
+          id:
+            payment.donationId,
+
+          status:
+            'REFUNDED',
+        },
+
+        campaign:
+          updatedCampaign,
+
+        originalIncomeLedger:
+          originalIncome,
+
+        refundLedger,
+      };
+    },
+    {
+      isolationLevel:
+        Prisma.TransactionIsolationLevel.Serializable,
+    },
+  );
+}
+  
   /**
    * Mark payment as FAILED.
    *
