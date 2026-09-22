@@ -191,9 +191,9 @@ model User {
   donorProfile    DonorProfile?
 
   qurbanPackages       QurbanPackage[]
-  qurbanAnimals        QurbanAnimal[]
-  qurbanDocumentations QurbanDocumentation[]
-  qurbanDistributions  QurbanDistribution[]
+qurbanAnimals        QurbanAnimal[]
+qurbanDocumentations QurbanDocumentation[]
+qurbanDistributions  QurbanDistribution[]
 
   @@index([email])
   @@index([phone])
