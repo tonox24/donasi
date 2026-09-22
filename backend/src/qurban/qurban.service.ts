@@ -455,7 +455,7 @@ export class QurbanService {
         'Qurban package deleted successfully',
     };
   }
-}
+
   // =========================================================
   // CREATE SAVING PLAN
   // =========================================================
@@ -1348,3 +1348,4 @@ export class QurbanService {
 
     return updated;
   }
+}
