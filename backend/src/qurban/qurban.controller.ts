@@ -19,6 +19,9 @@ import { CurrentUser } from '../auth/current-user.decorator';
 
 import { Permissions } from '../rbac/permissions.decorator';
 import { PermissionsGuard } from '../rbac/permissions.guard';
+import { CreateQurbanSavingDto } from './dto/create-qurban-saving.dto';
+import { UpdateQurbanSavingDto } from './dto/update-qurban-saving.dto';
+import { CreateQurbanContributionDto } from './dto/create-qurban-contribution.dto';
 
 @Controller('qurban')
 export class QurbanController {
@@ -104,3 +107,156 @@ export class QurbanController {
     );
   }
 }
+  // =========================================================
+  // TABUNGAN QURBAN
+  // =========================================================
+
+  @UseGuards(
+    JwtAuthGuard,
+    PermissionsGuard,
+  )
+  @Permissions('qurban.manage')
+  @Post('savings')
+  createSaving(
+    @Body() dto: CreateQurbanSavingDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.qurbanService.createSaving(
+      dto,
+      user.id,
+    );
+  }
+
+  @UseGuards(
+    JwtAuthGuard,
+    PermissionsGuard,
+  )
+  @Permissions('qurban.view')
+  @Get('savings')
+  findAllSavings() {
+    return this.qurbanService.findAllSavings();
+  }
+
+  @UseGuards(
+    JwtAuthGuard,
+    PermissionsGuard,
+  )
+  @Permissions('qurban.view')
+  @Get('savings/:id')
+  findOneSaving(
+    @Param('id') id: string,
+  ) {
+    return this.qurbanService.findOneSaving(id);
+  }
+
+  @UseGuards(
+    JwtAuthGuard,
+    PermissionsGuard,
+  )
+  @Permissions('qurban.manage')
+  @Patch('savings/:id')
+  updateSaving(
+    @Param('id') id: string,
+    @Body() dto: UpdateQurbanSavingDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.qurbanService.updateSaving(
+      id,
+      dto,
+      user.id,
+    );
+  }
+
+  // =========================================================
+  // SAVING PROGRESS
+  // =========================================================
+
+  @UseGuards(
+    JwtAuthGuard,
+    PermissionsGuard,
+  )
+  @Permissions('qurban.view')
+  @Get('savings/:id/progress')
+  getSavingProgress(
+    @Param('id') id: string,
+  ) {
+    return this.qurbanService.getSavingProgress(id);
+  }
+
+  // =========================================================
+  // CONTRIBUTIONS
+  // =========================================================
+
+  @UseGuards(
+    JwtAuthGuard,
+    PermissionsGuard,
+  )
+  @Permissions('qurban.manage')
+  @Post('savings/:id/contributions')
+  createContribution(
+    @Param('id') id: string,
+    @Body() dto: CreateQurbanContributionDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.qurbanService.createContribution(
+      id,
+      dto,
+      user.id,
+    );
+  }
+
+  @UseGuards(
+    JwtAuthGuard,
+    PermissionsGuard,
+  )
+  @Permissions('qurban.view')
+  @Get('savings/:id/contributions')
+  findContributions(
+    @Param('id') id: string,
+  ) {
+    return this.qurbanService.findContributions(id);
+  }
+
+  // =========================================================
+  // PAYMENT RECONCILIATION
+  // =========================================================
+
+  @UseGuards(
+    JwtAuthGuard,
+    PermissionsGuard,
+  )
+  @Permissions('qurban.manage')
+  @Post(
+    'savings/:id/contributions/:contributionId/mark-paid',
+  )
+  markContributionPaid(
+    @Param('id') id: string,
+    @Param('contributionId') contributionId: string,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.qurbanService.markContributionPaid(
+      id,
+      contributionId,
+      user.id,
+    );
+  }
+
+  @UseGuards(
+    JwtAuthGuard,
+    PermissionsGuard,
+  )
+  @Permissions('qurban.manage')
+  @Post(
+    'savings/:id/contributions/:contributionId/mark-failed',
+  )
+  markContributionFailed(
+    @Param('id') id: string,
+    @Param('contributionId') contributionId: string,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.qurbanService.markContributionFailed(
+      id,
+      contributionId,
+      user.id,
+    );
+  }
