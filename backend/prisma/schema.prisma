@@ -191,8 +191,6 @@ model User {
   donorProfile    DonorProfile?
 
   qurbanPackages       QurbanPackage[]
-  qurbanSavingPlans    QurbanSavingPlan[]
-  qurbanOrders         QurbanOrder[]
   qurbanAnimals        QurbanAnimal[]
   qurbanDocumentations QurbanDocumentation[]
   qurbanDistributions  QurbanDistribution[]
