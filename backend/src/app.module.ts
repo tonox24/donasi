@@ -17,6 +17,7 @@ import { PaymentModule } from './payment/payment.module';
 import { ReceiptModule } from './receipt/receipt.module';
 import { DonorModule } from './donor/donor.module';
 import { FinanceModule } from './finance/finance.module';
+import { QurbanModule } from './qurban/qurban.module';
 
 @Module({
   imports: [
@@ -49,6 +50,8 @@ import { FinanceModule } from './finance/finance.module';
     DonorModule,
 
     FinanceModule,
+
+    QurbanModule,
   ],
 
   controllers: [
