@@ -725,7 +725,7 @@ model ReceiptSequence {
 
   updatedAt DateTime @updatedAt
 }
-
+// Qurban and Tabungan Qurban relations
 /*
 |--------------------------------------------------------------------------
 | QURBAN PACKAGE
