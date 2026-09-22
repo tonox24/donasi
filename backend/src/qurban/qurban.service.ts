@@ -731,13 +731,15 @@ export class QurbanService {
     }
 
     if (
-      [
-        QurbanSavingStatus.COMPLETED,
-        QurbanSavingStatus.QURBAN_EXECUTED,
-        QurbanSavingStatus.CANCELLED,
-        QurbanSavingStatus.REFUNDED,
-      ].includes(saving.status)
-    ) {
+  (
+    [
+      QurbanSavingStatus.COMPLETED,
+      QurbanSavingStatus.QURBAN_EXECUTED,
+      QurbanSavingStatus.CANCELLED,
+      QurbanSavingStatus.REFUNDED,
+    ] as QurbanSavingStatus[]
+  ).includes(saving.status)
+) {
       throw new ConflictException(
         'This saving plan can no longer be modified',
       );
@@ -969,14 +971,16 @@ export class QurbanService {
       );
     }
 
-    if (
-      [
-        QurbanSavingStatus.COMPLETED,
-        QurbanSavingStatus.QURBAN_EXECUTED,
-        QurbanSavingStatus.CANCELLED,
-        QurbanSavingStatus.REFUNDED,
-      ].includes(saving.status)
-    ) {
+   if (
+  (
+    [
+      QurbanSavingStatus.COMPLETED,
+      QurbanSavingStatus.QURBAN_EXECUTED,
+      QurbanSavingStatus.CANCELLED,
+      QurbanSavingStatus.REFUNDED,
+    ] as QurbanSavingStatus[]
+  ).includes(saving.status)
+) {
       throw new ConflictException(
         'This saving plan does not accept new contributions',
       );
@@ -1160,14 +1164,16 @@ export class QurbanService {
         }
 
         if (
-          [
-            QurbanSavingStatus.CANCELLED,
-            QurbanSavingStatus.REFUNDED,
-            QurbanSavingStatus.QURBAN_EXECUTED,
-          ].includes(
-            saving.status,
-          )
-        ) {
+  (
+    [
+      QurbanSavingStatus.CANCELLED,
+      QurbanSavingStatus.REFUNDED,
+      QurbanSavingStatus.QURBAN_EXECUTED,
+    ] as QurbanSavingStatus[]
+  ).includes(
+    saving.status,
+  )
+) {
           throw new ConflictException(
             'Saving plan cannot receive payment',
           );
