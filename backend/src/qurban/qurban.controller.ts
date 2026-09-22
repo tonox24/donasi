@@ -106,7 +106,7 @@ export class QurbanController {
       user.id,
     );
   }
-}
+
   // =========================================================
   // TABUNGAN QURBAN
   // =========================================================
@@ -260,3 +260,4 @@ export class QurbanController {
       user.id,
     );
   }
+}
