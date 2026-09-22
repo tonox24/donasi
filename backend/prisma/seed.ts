@@ -312,6 +312,9 @@ async function main() {
       'beneficiary.create',
       'beneficiary.update',
       'beneficiary.delete',
+
+      'qurban.view',
+      'qurban.manage',
     ],
   );
 
@@ -352,6 +355,9 @@ async function main() {
 
       'donation.view',
       'donation.create',
+
+      'qurban.view',
+      'qurban.manage',
     ],
   );
 
