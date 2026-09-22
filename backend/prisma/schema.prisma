@@ -94,6 +94,81 @@ enum PaymentStatus {
   REFUNDED
 }
 
+enum QurbanAnimalType {
+  GOAT
+  SHEEP
+  COW
+}
+
+enum QurbanPackageStatus {
+  DRAFT
+  ACTIVE
+  INACTIVE
+  SOLD_OUT
+  COMPLETED
+}
+
+enum QurbanOrderStatus {
+  PENDING_PAYMENT
+  PAID
+  CONFIRMED
+  IN_PROCESS
+  COMPLETED
+  CANCELLED
+  REFUNDED
+}
+
+enum QurbanSavingStatus {
+  ACTIVE
+  ON_TRACK
+  COMPLETED
+  QURBAN_EXECUTED
+  OVERDUE
+  PAUSED
+  CANCELLED
+  REFUNDED
+}
+
+enum QurbanContributionStatus {
+  PENDING
+  PAID
+  FAILED
+  EXPIRED
+  CANCELLED
+  REFUNDED
+}
+
+enum QurbanAnimalStatus {
+  REGISTERED
+  VERIFIED
+  SLAUGHTERED
+  PROCESSED
+  DISTRIBUTED
+  CANCELLED
+}
+
+enum QurbanDocumentationType {
+  BEFORE_SLAUGHTER
+  SLAUGHTER
+  AFTER_SLAUGHTER
+  DISTRIBUTION
+  OTHER
+}
+
+enum QurbanDistributionStatus {
+  DRAFT
+  READY
+  DISTRIBUTED
+  CANCELLED
+}
+
+enum QurbanSavingFrequency {
+  DAILY
+  WEEKLY
+  MONTHLY
+  CUSTOM
+}
+
 model User {
   id           String     @id @default(uuid())
   email        String     @unique
@@ -114,6 +189,13 @@ model User {
   campaignUpdates CampaignUpdate[]
   beneficiaries   Beneficiary[]
   donorProfile    DonorProfile?
+
+  qurbanPackages       QurbanPackage[]
+  qurbanSavingPlans    QurbanSavingPlan[]
+  qurbanOrders         QurbanOrder[]
+  qurbanAnimals        QurbanAnimal[]
+  qurbanDocumentations QurbanDocumentation[]
+  qurbanDistributions  QurbanDistribution[]
 
   @@index([email])
   @@index([phone])
@@ -310,6 +392,7 @@ model Beneficiary {
   createdBy User @relation(fields: [createdById], references: [id], onDelete: Restrict)
 
   campaigns CampaignBeneficiary[]
+  qurbanDistributions QurbanDistributionBeneficiary[]
 
   @@index([type])
   @@index([isActive])
@@ -461,6 +544,8 @@ model DonorProfile {
 
   user     User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
   donations Donation[]
+  qurbanSavingPlans QurbanSavingPlan[]
+  qurbanOrders      QurbanOrder[]
 
   @@index([email])
   @@index([phone])
@@ -641,4 +726,468 @@ model ReceiptSequence {
   lastNumber Int @default(0)
 
   updatedAt DateTime @updatedAt
+}
+
+/*
+|--------------------------------------------------------------------------
+| QURBAN PACKAGE
+|--------------------------------------------------------------------------
+*/
+
+model QurbanPackage {
+  id String @id @default(uuid())
+
+  name        String
+  slug        String @unique
+  description String?
+
+  animalType QurbanAnimalType
+
+  /*
+   * Number of shares represented by this package.
+   *
+   * GOAT/SHEEP normally = 1
+   * COW can be 1 share or 7 shares depending on package.
+   */
+  shareCount Int @default(1)
+
+  price    Decimal @db.Decimal(18, 2)
+  currency String  @default("IDR")
+
+  qurbanYear Int
+
+  distributionLocation String?
+
+  quantityAvailable Int @default(0)
+  quantitySold      Int @default(0)
+
+  status QurbanPackageStatus @default(DRAFT)
+
+  createdById String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  createdBy User @relation(fields: [createdById], references: [id], onDelete: Restrict)
+
+  orders QurbanOrder[]
+
+  @@index([animalType])
+  @@index([qurbanYear])
+  @@index([status])
+  @@index([createdById])
+}
+
+
+/*
+|--------------------------------------------------------------------------
+| TABUNGAN QURBAN
+|--------------------------------------------------------------------------
+*/
+
+model QurbanSavingPlan {
+  id String @id @default(uuid())
+
+  savingNumber String @unique
+
+  donorId String
+
+  qurbanAnimalType QurbanAnimalType
+
+  /*
+   * Target amount required to fulfill the selected Qurban package.
+   */
+  targetAmount Decimal @db.Decimal(18, 2)
+
+  /*
+   * Total successful contributions.
+   */
+  currentAmount Decimal @default(0) @db.Decimal(18, 2)
+
+  /*
+   * Remaining amount to reach the target.
+   */
+  remainingAmount Decimal @default(0) @db.Decimal(18, 2)
+
+  currency String @default("IDR")
+
+  contributionAmount Decimal? @db.Decimal(18, 2)
+
+  frequency QurbanSavingFrequency
+
+  startDate  DateTime
+  targetDate DateTime
+
+  status QurbanSavingStatus @default(ACTIVE)
+
+  /*
+   * Optional information about the selected destination.
+   */
+  distributionLocation String?
+
+  /*
+   * Optional pekurban name.
+   */
+  pekurbanName String?
+
+  notes String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  donor DonorProfile @relation(fields: [donorId], references: [id], onDelete: Restrict)
+
+  contributions QurbanSavingContribution[]
+  orders        QurbanOrder[]
+
+  @@index([donorId])
+  @@index([status])
+  @@index([qurbanAnimalType])
+  @@index([targetDate])
+}
+
+
+/*
+|--------------------------------------------------------------------------
+| TABUNGAN QURBAN CONTRIBUTION
+|--------------------------------------------------------------------------
+*/
+
+model QurbanSavingContribution {
+  id String @id @default(uuid())
+
+  contributionNumber String @unique
+
+  savingPlanId String
+
+  amount   Decimal @db.Decimal(18, 2)
+  currency String  @default("IDR")
+
+  status QurbanContributionStatus @default(PENDING)
+
+  contributionDate DateTime @default(now())
+
+  paymentReference String?
+  paymentMethod    String?
+
+  providerTransactionId String?
+
+  notes String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  savingPlan QurbanSavingPlan @relation(
+    fields: [savingPlanId],
+    references: [id],
+    onDelete: Restrict
+  )
+
+  @@index([savingPlanId])
+  @@index([status])
+  @@index([contributionDate])
+  @@index([providerTransactionId])
+}
+
+
+/*
+|--------------------------------------------------------------------------
+| QURBAN ORDER
+|--------------------------------------------------------------------------
+*/
+
+model QurbanOrder {
+  id String @id @default(uuid())
+
+  orderNumber String @unique
+
+  donorId String
+
+  qurbanPackageId String
+
+  /*
+   * Optional link when the order comes from Tabungan Qurban.
+   */
+  savingPlanId String?
+
+  animalType QurbanAnimalType
+
+  /*
+   * Number of Qurban units/orders.
+   */
+  quantity Int @default(1)
+
+  /*
+   * Number of shares represented by the order.
+   */
+  shareCount Int @default(1)
+
+  unitPrice  Decimal @db.Decimal(18, 2)
+  totalAmount Decimal @db.Decimal(18, 2)
+
+  currency String @default("IDR")
+
+  qurbanYear Int
+
+  pekurbanName String
+
+  donorName  String
+  donorEmail String?
+  donorPhone String?
+
+  distributionLocation String?
+
+  status QurbanOrderStatus @default(PENDING_PAYMENT)
+
+  notes String?
+
+  certificateNumber String?
+  certificateUrl    String?
+
+  confirmedAt  DateTime?
+  completedAt  DateTime?
+  cancelledAt  DateTime?
+  refundedAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  donor         DonorProfile   @relation(fields: [donorId], references: [id], onDelete: Restrict)
+  qurbanPackage QurbanPackage  @relation(fields: [qurbanPackageId], references: [id], onDelete: Restrict)
+  savingPlan    QurbanSavingPlan? @relation(
+    fields: [savingPlanId],
+    references: [id],
+    onDelete: SetNull
+  )
+
+  animals       QurbanAnimal[]
+  documentations QurbanDocumentation[]
+  distributions QurbanDistribution[]
+
+  @@index([donorId])
+  @@index([qurbanPackageId])
+  @@index([savingPlanId])
+  @@index([status])
+  @@index([qurbanYear])
+  @@index([createdAt])
+}
+
+
+/*
+|--------------------------------------------------------------------------
+| QURBAN ANIMAL
+|--------------------------------------------------------------------------
+*/
+
+model QurbanAnimal {
+  id String @id @default(uuid())
+
+  animalCode String @unique
+
+  qurbanOrderId String
+
+  animalType QurbanAnimalType
+
+  /*
+   * Actual animal age in months.
+   *
+   * This allows the application to validate eligibility.
+   */
+  ageMonths Int?
+
+  weightKg Decimal? @db.Decimal(10, 2)
+
+  sex String?
+
+  healthStatus String?
+
+  location String?
+
+  status QurbanAnimalStatus @default(REGISTERED)
+
+  verifiedAt DateTime?
+  slaughteredAt DateTime?
+  processedAt DateTime?
+  distributedAt DateTime?
+
+  notes String?
+
+  createdById String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  qurbanOrder QurbanOrder @relation(
+    fields: [qurbanOrderId],
+    references: [id],
+    onDelete: Restrict
+  )
+
+  createdBy User @relation(
+    fields: [createdById],
+    references: [id],
+    onDelete: Restrict
+  )
+
+  documentations QurbanDocumentation[]
+
+  @@index([qurbanOrderId])
+  @@index([animalType])
+  @@index([status])
+  @@index([createdById])
+}
+
+
+/*
+|--------------------------------------------------------------------------
+| QURBAN DOCUMENTATION
+|--------------------------------------------------------------------------
+*/
+
+model QurbanDocumentation {
+  id String @id @default(uuid())
+
+  qurbanOrderId String
+
+  /*
+   * Optional because some documentation belongs specifically
+   * to an animal.
+   */
+  qurbanAnimalId String?
+
+  type QurbanDocumentationType
+
+  fileUrl String
+
+  title   String?
+  caption String?
+
+  takenAt DateTime?
+
+  createdById String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  qurbanOrder QurbanOrder @relation(
+    fields: [qurbanOrderId],
+    references: [id],
+    onDelete: Cascade
+  )
+
+  qurbanAnimal QurbanAnimal? @relation(
+    fields: [qurbanAnimalId],
+    references: [id],
+    onDelete: SetNull
+  )
+
+  createdBy User @relation(
+    fields: [createdById],
+    references: [id],
+    onDelete: Restrict
+  )
+
+  @@index([qurbanOrderId])
+  @@index([qurbanAnimalId])
+  @@index([type])
+  @@index([createdAt])
+}
+
+
+/*
+|--------------------------------------------------------------------------
+| QURBAN DISTRIBUTION
+|--------------------------------------------------------------------------
+*/
+
+model QurbanDistribution {
+  id String @id @default(uuid())
+
+  distributionNumber String @unique
+
+  qurbanOrderId String
+
+  location String
+
+  distributionDate DateTime?
+
+  /*
+   * Total meat packages prepared.
+   */
+  packageQuantity Int @default(0)
+
+  /*
+   * Number of beneficiaries receiving meat.
+   */
+  beneficiaryCount Int @default(0)
+
+  status QurbanDistributionStatus @default(DRAFT)
+
+  notes String?
+
+  createdById String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  qurbanOrder QurbanOrder @relation(
+    fields: [qurbanOrderId],
+    references: [id],
+    onDelete: Restrict
+  )
+
+  createdBy User @relation(
+    fields: [createdById],
+    references: [id],
+    onDelete: Restrict
+  )
+
+  beneficiaries QurbanDistributionBeneficiary[]
+
+  @@index([qurbanOrderId])
+  @@index([status])
+  @@index([distributionDate])
+  @@index([location])
+  @@index([createdById])
+}
+
+
+/*
+|--------------------------------------------------------------------------
+| QURBAN DISTRIBUTION BENEFICIARY
+|--------------------------------------------------------------------------
+*/
+
+model QurbanDistributionBeneficiary {
+  id String @id @default(uuid())
+
+  distributionId String
+  beneficiaryId String
+
+  /*
+   * Number of meat packages received.
+   */
+  packageQuantity Int @default(1)
+
+  receivedAt DateTime?
+
+  notes String?
+
+  createdAt DateTime @default(now())
+
+  distribution QurbanDistribution @relation(
+    fields: [distributionId],
+    references: [id],
+    onDelete: Cascade
+  )
+
+  beneficiary Beneficiary @relation(
+    fields: [beneficiaryId],
+    references: [id],
+    onDelete: Restrict
+  )
+
+  @@unique([distributionId, beneficiaryId])
+  @@index([distributionId])
+  @@index([beneficiaryId])
 }
