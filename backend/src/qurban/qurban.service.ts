@@ -2,17 +2,24 @@ import {
   ConflictException,
   Injectable,
   NotFoundException,
+  BadRequestException,
 } from '@nestjs/common';
 
 import {
   Prisma,
   QurbanPackageStatus,
+  QurbanSavingStatus,
+
 } from '@prisma/client';
 
 import { PrismaService } from '../prisma.service';
 
 import { CreateQurbanPackageDto } from './dto/create-qurban-package.dto';
 import { UpdateQurbanPackageDto } from './dto/update-qurban-package.dto';
+import { CreateQurbanSavingDto } from './dto/create-qurban-saving.dto';
+import { UpdateQurbanSavingDto } from './dto/update-qurban-saving.dto';
+import { CreateQurbanContributionDto } from './dto/create-qurban-contribution.dto';
+
 
 @Injectable()
 export class QurbanService {
@@ -449,3 +456,895 @@ export class QurbanService {
     };
   }
 }
+  // =========================================================
+  // CREATE SAVING PLAN
+  // =========================================================
+
+  async createSaving(
+    dto: CreateQurbanSavingDto,
+    userId: string,
+  ) {
+    const donor =
+      await this.prisma.donorProfile.findUnique({
+        where: {
+          id: dto.donorId,
+        },
+      });
+
+    if (!donor) {
+      throw new NotFoundException(
+        'Donor not found',
+      );
+    }
+
+    if (donor.status !== 'ACTIVE') {
+      throw new ConflictException(
+        'Donor is not active',
+      );
+    }
+
+    const startDate =
+      new Date(dto.startDate);
+
+    const targetDate =
+      new Date(dto.targetDate);
+
+    if (
+      Number.isNaN(startDate.getTime()) ||
+      Number.isNaN(targetDate.getTime())
+    ) {
+      throw new BadRequestException(
+        'Invalid startDate or targetDate',
+      );
+    }
+
+    if (targetDate <= startDate) {
+      throw new BadRequestException(
+        'targetDate must be after startDate',
+      );
+    }
+
+    const targetAmount =
+      new Prisma.Decimal(
+        dto.targetAmount,
+      );
+
+    const contributionAmount =
+      dto.contributionAmount !== undefined
+        ? new Prisma.Decimal(
+            dto.contributionAmount,
+          )
+        : null;
+
+    if (
+      contributionAmount &&
+      contributionAmount.greaterThan(
+        targetAmount,
+      )
+    ) {
+      throw new BadRequestException(
+        'Contribution amount cannot exceed target amount',
+      );
+    }
+
+    const year =
+      targetDate.getFullYear();
+
+    const random =
+      Math.random()
+        .toString(36)
+        .substring(2, 8)
+        .toUpperCase();
+
+    const savingNumber =
+      `QS-${year}-${Date.now()}-${random}`;
+
+    const saving =
+      await this.prisma.qurbanSavingPlan.create({
+        data: {
+          savingNumber,
+
+          donorId:
+            dto.donorId,
+
+          qurbanAnimalType:
+            dto.qurbanAnimalType,
+
+          targetAmount,
+
+          currentAmount:
+            new Prisma.Decimal(0),
+
+          remainingAmount:
+            targetAmount,
+
+          currency:
+            dto.currency
+              ?.trim()
+              .toUpperCase() || 'IDR',
+
+          contributionAmount,
+
+          frequency:
+            dto.frequency,
+
+          startDate,
+
+          targetDate,
+
+          status:
+            QurbanSavingStatus.ACTIVE,
+
+          distributionLocation:
+            dto.distributionLocation?.trim() ||
+            null,
+
+          pekurbanName:
+            dto.pekurbanName?.trim() ||
+            null,
+
+          notes:
+            dto.notes?.trim() ||
+            null,
+        },
+
+        include: {
+          donor: {
+            select: {
+              id: true,
+              fullName: true,
+              email: true,
+              phone: true,
+            },
+          },
+        },
+      });
+
+    await this.prisma.auditLog.create({
+      data: {
+        action:
+          'QURBAN_SAVING_CREATE',
+
+        entity:
+          'QurbanSavingPlan',
+
+        entityId:
+          saving.id,
+
+        userId,
+
+        metadata: {
+          savingNumber:
+            saving.savingNumber,
+
+          donorId:
+            saving.donorId,
+
+          targetAmount:
+            saving.targetAmount.toString(),
+
+          frequency:
+            saving.frequency,
+        },
+      },
+    });
+
+    return saving;
+  }
+  // =========================================================
+  // FIND ALL SAVING PLANS
+  // =========================================================
+
+  async findAllSavings() {
+    return this.prisma.qurbanSavingPlan.findMany({
+      orderBy: {
+        createdAt: 'desc',
+      },
+
+      include: {
+        donor: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+            phone: true,
+          },
+        },
+
+        _count: {
+          select: {
+            contributions: true,
+            orders: true,
+          },
+        },
+      },
+    });
+  }
+  // =========================================================
+  // FIND ONE SAVING PLAN
+  // =========================================================
+
+  async findOneSaving(id: string) {
+    const saving =
+      await this.prisma.qurbanSavingPlan.findUnique({
+        where: {
+          id: id.trim(),
+        },
+
+        include: {
+          donor: {
+            select: {
+              id: true,
+              fullName: true,
+              email: true,
+              phone: true,
+            },
+          },
+
+          contributions: {
+            orderBy: {
+              contributionDate: 'desc',
+            },
+          },
+
+          orders: {
+            select: {
+              id: true,
+              orderNumber: true,
+              totalAmount: true,
+              status: true,
+              qurbanYear: true,
+              createdAt: true,
+            },
+          },
+        },
+      });
+
+    if (!saving) {
+      throw new NotFoundException(
+        'Qurban saving plan not found',
+      );
+    }
+
+    return saving;
+  }
+  // =========================================================
+  // UPDATE SAVING PLAN
+  // =========================================================
+
+  async updateSaving(
+    id: string,
+    dto: UpdateQurbanSavingDto,
+    userId: string,
+  ) {
+    const saving =
+      await this.prisma.qurbanSavingPlan.findUnique({
+        where: {
+          id: id.trim(),
+        },
+      });
+
+    if (!saving) {
+      throw new NotFoundException(
+        'Qurban saving plan not found',
+      );
+    }
+
+    if (
+      [
+        QurbanSavingStatus.COMPLETED,
+        QurbanSavingStatus.QURBAN_EXECUTED,
+        QurbanSavingStatus.CANCELLED,
+        QurbanSavingStatus.REFUNDED,
+      ].includes(saving.status)
+    ) {
+      throw new ConflictException(
+        'This saving plan can no longer be modified',
+      );
+    }
+
+    const targetAmount =
+      dto.targetAmount !== undefined
+        ? new Prisma.Decimal(
+            dto.targetAmount,
+          )
+        : saving.targetAmount;
+
+    const currentAmount =
+      saving.currentAmount;
+
+    if (
+      targetAmount.lessThan(
+        currentAmount,
+      )
+    ) {
+      throw new ConflictException(
+        'Target amount cannot be lower than current amount',
+      );
+    }
+
+    let startDate =
+      saving.startDate;
+
+    let targetDate =
+      saving.targetDate;
+
+    if (dto.startDate !== undefined) {
+      startDate =
+        new Date(dto.startDate);
+    }
+
+    if (dto.targetDate !== undefined) {
+      targetDate =
+        new Date(dto.targetDate);
+    }
+
+    if (targetDate <= startDate) {
+      throw new BadRequestException(
+        'targetDate must be after startDate',
+      );
+    }
+
+    const remainingAmount =
+      targetAmount.minus(
+        currentAmount,
+      );
+
+    const updated =
+      await this.prisma.qurbanSavingPlan.update({
+        where: {
+          id: saving.id,
+        },
+
+        data: {
+          ...(dto.qurbanAnimalType !== undefined && {
+            qurbanAnimalType:
+              dto.qurbanAnimalType,
+          }),
+
+          ...(dto.targetAmount !== undefined && {
+            targetAmount,
+            remainingAmount,
+          }),
+
+          ...(dto.contributionAmount !== undefined && {
+            contributionAmount:
+              new Prisma.Decimal(
+                dto.contributionAmount,
+              ),
+          }),
+
+          ...(dto.frequency !== undefined && {
+            frequency:
+              dto.frequency,
+          }),
+
+          startDate,
+          targetDate,
+
+          ...(dto.distributionLocation !== undefined && {
+            distributionLocation:
+              dto.distributionLocation.trim() ||
+              null,
+          }),
+
+          ...(dto.pekurbanName !== undefined && {
+            pekurbanName:
+              dto.pekurbanName.trim() ||
+              null,
+          }),
+
+          ...(dto.notes !== undefined && {
+            notes:
+              dto.notes.trim() ||
+              null,
+          }),
+
+          ...(dto.currency !== undefined && {
+            currency:
+              dto.currency
+                .trim()
+                .toUpperCase(),
+          }),
+
+          ...(dto.status !== undefined && {
+            status:
+              dto.status,
+          }),
+        },
+      });
+
+    await this.prisma.auditLog.create({
+      data: {
+        action:
+          'QURBAN_SAVING_UPDATE',
+
+        entity:
+          'QurbanSavingPlan',
+
+        entityId:
+          updated.id,
+
+        userId,
+
+        metadata: {
+          changes:
+            JSON.parse(
+              JSON.stringify(dto),
+            ),
+        },
+      },
+    });
+
+    return updated;
+  }
+  // =========================================================
+  // SAVING PROGRESS
+  // =========================================================
+
+  async getSavingProgress(id: string) {
+    const saving =
+      await this.prisma.qurbanSavingPlan.findUnique({
+        where: {
+          id: id.trim(),
+        },
+
+        select: {
+          id: true,
+          savingNumber: true,
+          targetAmount: true,
+          currentAmount: true,
+          remainingAmount: true,
+          currency: true,
+          status: true,
+        },
+      });
+
+    if (!saving) {
+      throw new NotFoundException(
+        'Qurban saving plan not found',
+      );
+    }
+
+    const target =
+      Number(saving.targetAmount);
+
+    const current =
+      Number(saving.currentAmount);
+
+    const progress =
+      target > 0
+        ? Math.min(
+            (current / target) * 100,
+            100,
+          )
+        : 0;
+
+    return {
+      id: saving.id,
+
+      savingNumber:
+        saving.savingNumber,
+
+      targetAmount:
+        saving.targetAmount.toString(),
+
+      currentAmount:
+        saving.currentAmount.toString(),
+
+      remainingAmount:
+        saving.remainingAmount.toString(),
+
+      currency:
+        saving.currency,
+
+      progressPercentage:
+        Number(
+          progress.toFixed(2),
+        ),
+
+      status:
+        saving.status,
+    };
+  }
+  // =========================================================
+  // CREATE CONTRIBUTION
+  // =========================================================
+
+  async createContribution(
+    savingId: string,
+    dto: CreateQurbanContributionDto,
+    userId: string,
+  ) {
+    const saving =
+      await this.prisma.qurbanSavingPlan.findUnique({
+        where: {
+          id: savingId.trim(),
+        },
+      });
+
+    if (!saving) {
+      throw new NotFoundException(
+        'Qurban saving plan not found',
+      );
+    }
+
+    if (
+      [
+        QurbanSavingStatus.COMPLETED,
+        QurbanSavingStatus.QURBAN_EXECUTED,
+        QurbanSavingStatus.CANCELLED,
+        QurbanSavingStatus.REFUNDED,
+      ].includes(saving.status)
+    ) {
+      throw new ConflictException(
+        'This saving plan does not accept new contributions',
+      );
+    }
+
+    const amount =
+      new Prisma.Decimal(
+        dto.amount,
+      );
+
+    if (
+      amount.greaterThan(
+        saving.remainingAmount,
+      )
+    ) {
+      throw new BadRequestException(
+        `Contribution exceeds remaining target of ${saving.remainingAmount.toString()}`,
+      );
+    }
+
+    const year =
+      new Date().getFullYear();
+
+    const random =
+      Math.random()
+        .toString(36)
+        .substring(2, 8)
+        .toUpperCase();
+
+    const contributionNumber =
+      `QSC-${year}-${Date.now()}-${random}`;
+
+    const contribution =
+      await this.prisma.qurbanSavingContribution.create({
+        data: {
+          contributionNumber,
+
+          savingPlanId:
+            saving.id,
+
+          amount,
+
+          currency:
+            saving.currency,
+
+          status:
+            QurbanContributionStatus.PENDING,
+
+          paymentMethod:
+            dto.paymentMethod?.trim() ||
+            null,
+
+          notes:
+            dto.notes?.trim() ||
+            null,
+        },
+      });
+
+    await this.prisma.auditLog.create({
+      data: {
+        action:
+          'QURBAN_SAVING_CONTRIBUTION_CREATE',
+
+        entity:
+          'QurbanSavingContribution',
+
+        entityId:
+          contribution.id,
+
+        userId,
+
+        metadata: {
+          savingPlanId:
+            saving.id,
+
+          contributionNumber:
+            contribution.contributionNumber,
+
+          amount:
+            contribution.amount.toString(),
+        },
+      },
+    });
+
+    return contribution;
+  }
+  // =========================================================
+  // FIND CONTRIBUTIONS
+  // =========================================================
+
+  async findContributions(
+    savingId: string,
+  ) {
+    const saving =
+      await this.prisma.qurbanSavingPlan.findUnique({
+        where: {
+          id: savingId.trim(),
+        },
+
+        select: {
+          id: true,
+          savingNumber: true,
+        },
+      });
+
+    if (!saving) {
+      throw new NotFoundException(
+        'Qurban saving plan not found',
+      );
+    }
+
+    return this.prisma.qurbanSavingContribution.findMany({
+      where: {
+        savingPlanId:
+          saving.id,
+      },
+
+      orderBy: {
+        contributionDate: 'desc',
+      },
+    });
+  }
+  // =========================================================
+  // MARK CONTRIBUTION PAID
+  // =========================================================
+
+  async markContributionPaid(
+    savingId: string,
+    contributionId: string,
+    userId: string,
+  ) {
+    return this.prisma.$transaction(
+      async (tx) => {
+        const contribution =
+          await tx.qurbanSavingContribution.findFirst({
+            where: {
+              id:
+                contributionId.trim(),
+
+              savingPlanId:
+                savingId.trim(),
+            },
+          });
+
+        if (!contribution) {
+          throw new NotFoundException(
+            'Qurban saving contribution not found',
+          );
+        }
+
+        if (
+          contribution.status ===
+          QurbanContributionStatus.PAID
+        ) {
+          throw new ConflictException(
+            'Contribution is already paid',
+          );
+        }
+
+        if (
+          contribution.status !==
+          QurbanContributionStatus.PENDING
+        ) {
+          throw new ConflictException(
+            `Contribution cannot be paid from status ${contribution.status}`,
+          );
+        }
+
+        const saving =
+          await tx.qurbanSavingPlan.findUnique({
+            where: {
+              id:
+                savingId.trim(),
+            },
+          });
+
+        if (!saving) {
+          throw new NotFoundException(
+            'Qurban saving plan not found',
+          );
+        }
+
+        if (
+          [
+            QurbanSavingStatus.CANCELLED,
+            QurbanSavingStatus.REFUNDED,
+            QurbanSavingStatus.QURBAN_EXECUTED,
+          ].includes(
+            saving.status,
+          )
+        ) {
+          throw new ConflictException(
+            'Saving plan cannot receive payment',
+          );
+        }
+
+        const newCurrentAmount =
+          saving.currentAmount.plus(
+            contribution.amount,
+          );
+
+        if (
+          newCurrentAmount.greaterThan(
+            saving.targetAmount,
+          )
+        ) {
+          throw new ConflictException(
+            'Contribution would exceed saving target',
+          );
+        }
+
+        const newRemainingAmount =
+          saving.targetAmount.minus(
+            newCurrentAmount,
+          );
+
+        const newStatus =
+          newRemainingAmount.isZero()
+            ? QurbanSavingStatus.COMPLETED
+            : QurbanSavingStatus.ON_TRACK;
+
+        const updatedContribution =
+          await tx.qurbanSavingContribution.update({
+            where: {
+              id:
+                contribution.id,
+            },
+
+            data: {
+              status:
+                QurbanContributionStatus.PAID,
+            },
+          });
+
+        const updatedSaving =
+          await tx.qurbanSavingPlan.update({
+            where: {
+              id:
+                saving.id,
+            },
+
+            data: {
+              currentAmount:
+                newCurrentAmount,
+
+              remainingAmount:
+                newRemainingAmount,
+
+              status:
+                newStatus,
+            },
+          });
+
+        await tx.auditLog.create({
+          data: {
+            action:
+              'QURBAN_SAVING_CONTRIBUTION_PAID',
+
+            entity:
+              'QurbanSavingContribution',
+
+            entityId:
+              contribution.id,
+
+            userId,
+
+            metadata: {
+              savingPlanId:
+                saving.id,
+
+              contributionNumber:
+                contribution.contributionNumber,
+
+              amount:
+                contribution.amount.toString(),
+
+              currentAmount:
+                newCurrentAmount.toString(),
+
+              remainingAmount:
+                newRemainingAmount.toString(),
+
+              savingStatus:
+                newStatus,
+            },
+          },
+        });
+
+        return {
+          contribution:
+            updatedContribution,
+
+          saving:
+            updatedSaving,
+        };
+      },
+    );
+  }
+  // =========================================================
+  // MARK CONTRIBUTION FAILED
+  // =========================================================
+
+  async markContributionFailed(
+    savingId: string,
+    contributionId: string,
+    userId: string,
+  ) {
+    const contribution =
+      await this.prisma.qurbanSavingContribution.findFirst({
+        where: {
+          id:
+            contributionId.trim(),
+
+          savingPlanId:
+            savingId.trim(),
+        },
+      });
+
+    if (!contribution) {
+      throw new NotFoundException(
+        'Qurban saving contribution not found',
+      );
+    }
+
+    if (
+      contribution.status !==
+      QurbanContributionStatus.PENDING
+    ) {
+      throw new ConflictException(
+        `Contribution cannot be failed from status ${contribution.status}`,
+      );
+    }
+
+    const updated =
+      await this.prisma.qurbanSavingContribution.update({
+        where: {
+          id:
+            contribution.id,
+        },
+
+        data: {
+          status:
+            QurbanContributionStatus.FAILED,
+        },
+      });
+
+    await this.prisma.auditLog.create({
+      data: {
+        action:
+          'QURBAN_SAVING_CONTRIBUTION_FAILED',
+
+        entity:
+          'QurbanSavingContribution',
+
+        entityId:
+          contribution.id,
+
+        userId,
+
+        metadata: {
+          savingPlanId:
+            savingId,
+
+          contributionNumber:
+            contribution.contributionNumber,
+        },
+      },
+    });
+
+    return updated;
+  }
