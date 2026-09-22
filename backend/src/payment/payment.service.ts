@@ -787,47 +787,46 @@ async refund(
             createdById:
               userId,
 
-            metadata: {
+           metadata: {
               source:
                 'DONATION_REFUND',
-
+            
               originalIncomeLedgerId:
                 originalIncome.id,
-
+            
               originalIncomeReference:
                 originalIncome.reference,
-
+            
               provider:
                 payment.provider,
-
+            
               providerTransactionId:
                 providerTransactionId ??
                 payment.providerTransactionId,
-
+            
               transactionReference:
                 payment.transactionReference,
-
+            
               paymentMethod:
                 payment.paymentMethod,
-
+            
               donorName:
                 payment.donation.donorName,
-
+            
               campaignTitle:
                 payment.donation.campaign.title,
-
+            
               reason:
                 cleanReason,
-
+            
               refundedAt:
                 refundedAt.toISOString(),
-
+            
               previousCampaignCollectedAmount:
-                (
-                  updatedCampaign.collectedAmount +
-                  payment.amount
-                ).toString(),
-
+                updatedCampaign.collectedAmount
+                  .add(payment.amount)
+                  .toString(),
+            
               recalculatedCampaignCollectedAmount:
                 updatedCampaign.collectedAmount.toString(),
             },
