@@ -539,20 +539,20 @@ async markAsPaid(
   );
 }
 
-  /**
+/**
  * Refund a PAID payment.
  *
  * Flow:
  *
  * Payment PAID
  * Donation PAID
- * Campaign collectedAmount
+ * Campaign collectedAmount includes donation
  *
  * becomes:
  *
  * Payment REFUNDED
  * Donation REFUNDED
- * Campaign collectedAmount decremented
+ * Campaign collectedAmount recalculated from active PAID donations
  * Finance Ledger REFUND posted
  * Audit logs created
  *
@@ -573,12 +573,23 @@ async refund(
     );
   }
 
+  if (cleanReason.length < 5) {
+    throw new BadRequestException(
+      'Refund reason must be at least 5 characters',
+    );
+  }
+
+  if (cleanReason.length > 500) {
+    throw new BadRequestException(
+      'Refund reason must be less than or equal to 500 characters',
+    );
+  }
+
   const payment =
     await this.prisma.paymentTransaction.findUnique({
       where: {
         id,
       },
-
       include: {
         donation: {
           include: {
@@ -612,40 +623,43 @@ async refund(
     );
   }
 
-  const originalIncome =
-    await this.prisma.financeLedger.findFirst({
-      where: {
-        paymentTransactionId: payment.id,
-
-        type: 'INCOME',
-
-        status: 'POSTED',
-      },
-    });
-
-  if (!originalIncome) {
-    throw new BadRequestException(
-      'Posted income ledger for this payment was not found',
-    );
-  }
-
   const refundedAt = new Date();
 
   return this.prisma.$transaction(
     async (tx) => {
       /**
-       * 1. Update Payment
+       * 1. Get original INCOME ledger inside
+       *    the same transaction.
+       */
+      const originalIncome =
+        await tx.financeLedger.findFirst({
+          where: {
+            paymentTransactionId: payment.id,
+            type: 'INCOME',
+            status: 'POSTED',
+          },
+        });
+
+      if (!originalIncome) {
+        throw new BadRequestException(
+          'Posted income ledger for this payment was not found',
+        );
+      }
+
+      /**
+       * 2. Update Payment
        *
        * Only PAID payment can become REFUNDED.
+       *
+       * updateMany is intentionally used so the
+       * status condition is enforced by the database.
        */
       const paymentUpdate =
         await tx.paymentTransaction.updateMany({
           where: {
             id,
-
             status: 'PAID',
           },
-
           data: {
             status: 'REFUNDED',
 
@@ -655,9 +669,7 @@ async refund(
 
             rawResponse: {
               refund: true,
-
               reason: cleanReason,
-
               refundedAt:
                 refundedAt.toISOString(),
             },
@@ -671,62 +683,75 @@ async refund(
       }
 
       /**
-       * 2. Update Donation
+       * 3. Update Donation
        */
-      const updatedDonation =
+      const donationUpdate =
         await tx.donation.updateMany({
           where: {
             id: payment.donationId,
-
             status: 'PAID',
           },
-
           data: {
             status: 'REFUNDED',
           },
         });
 
-      if (updatedDonation.count !== 1) {
+      if (donationUpdate.count !== 1) {
         throw new BadRequestException(
           'Donation is no longer eligible for refund',
         );
       }
 
       /**
-       * 3. Decrease Campaign collected amount.
+       * 4. Recalculate Campaign collectedAmount
        *
-       * The condition prevents the amount from
-       * becoming negative.
+       * Instead of blindly decrementing the amount,
+       * calculate it from donations that are still PAID.
+       *
+       * This makes Campaign.collectedAmount an accurate
+       * representation of currently active paid donations.
        */
-      const campaignUpdate =
-        await tx.campaign.updateMany({
+      const activePaidDonations =
+        await tx.donation.aggregate({
           where: {
-            id:
+            campaignId:
               payment.donation.campaignId,
-
-            collectedAmount: {
-              gte: payment.amount,
-            },
+            status: 'PAID',
           },
-
-          data: {
-            collectedAmount: {
-              decrement:
-                payment.amount,
-            },
+          _sum: {
+            amount: true,
           },
         });
 
-      if (campaignUpdate.count !== 1) {
-        throw new BadRequestException(
-          'Campaign collected amount is insufficient for this refund',
-        );
-      }
+      const recalculatedCollectedAmount =
+        activePaidDonations._sum.amount ?? 0;
 
       /**
-       * 4. Create REFUND Finance Ledger
+       * 5. Update Campaign
+       */
+      const updatedCampaign =
+        await tx.campaign.update({
+          where: {
+            id: payment.donation.campaignId,
+          },
+          data: {
+            collectedAmount:
+              recalculatedCollectedAmount,
+          },
+          select: {
+            id: true,
+            title: true,
+            collectedAmount: true,
+            targetAmount: true,
+            currency: true,
+            status: true,
+          },
+        });
+
+      /**
+       * 6. Create REFUND Finance Ledger
        *
-       * The original INCOME ledger remains untouched.
+       * Original INCOME remains untouched.
        */
       const refundLedger =
         await tx.financeLedger.create({
@@ -796,12 +821,21 @@ async refund(
 
               refundedAt:
                 refundedAt.toISOString(),
+
+              previousCampaignCollectedAmount:
+                (
+                  updatedCampaign.collectedAmount +
+                  payment.amount
+                ).toString(),
+
+              recalculatedCampaignCollectedAmount:
+                updatedCampaign.collectedAmount.toString(),
             },
           },
         });
 
       /**
-       * 5. Audit Payment
+       * 7. Audit Payment
        */
       await tx.auditLog.create({
         data: {
@@ -838,14 +872,21 @@ async refund(
             reason:
               cleanReason,
 
+            providerTransactionId:
+              providerTransactionId ??
+              payment.providerTransactionId,
+
             refundedAt:
               refundedAt.toISOString(),
+
+            campaignCollectedAmount:
+              updatedCampaign.collectedAmount.toString(),
           },
         },
       });
 
       /**
-       * 6. Audit Donation
+       * 8. Audit Donation
        */
       await tx.auditLog.create({
         data: {
@@ -881,12 +922,15 @@ async refund(
 
             reason:
               cleanReason,
+
+            campaignCollectedAmount:
+              updatedCampaign.collectedAmount.toString(),
           },
         },
       });
 
       /**
-       * 7. Audit Finance Ledger
+       * 9. Audit Finance Ledger
        */
       await tx.auditLog.create({
         data: {
@@ -929,14 +973,20 @@ async refund(
             originalIncomeLedgerId:
               originalIncome.id,
 
+            originalIncomeReference:
+              originalIncome.reference,
+
             reason:
               cleanReason,
+
+            campaignCollectedAmount:
+              updatedCampaign.collectedAmount.toString(),
           },
         },
       });
 
       /**
-       * 8. Get updated records
+       * 10. Get updated Payment
        */
       const updatedPayment =
         await tx.paymentTransaction.findUnique({
@@ -945,30 +995,37 @@ async refund(
           },
         });
 
-      const updatedCampaign =
-        await tx.campaign.findUnique({
-          where: {
-            id:
-              payment.donation.campaignId,
-          },
+      if (!updatedPayment) {
+        throw new NotFoundException(
+          'Payment not found after refund',
+        );
+      }
 
-          select: {
-            id: true,
-            collectedAmount: true,
+      /**
+       * 11. Get updated Donation
+       */
+      const updatedDonation =
+        await tx.donation.findUnique({
+          where: {
+            id: payment.donationId,
           },
         });
 
+      if (!updatedDonation) {
+        throw new NotFoundException(
+          'Donation not found after refund',
+        );
+      }
+
+      /**
+       * 12. Final response
+       */
       return {
         payment:
           updatedPayment,
 
-        donation: {
-          id:
-            payment.donationId,
-
-          status:
-            'REFUNDED',
-        },
+        donation:
+          updatedDonation,
 
         campaign:
           updatedCampaign,
