@@ -584,7 +584,7 @@ model Donation {
 
   payments PaymentTransaction[]
   impacts  DonationImpact[]
-  receipts Receipt[]
+  receipts Receipt?
   financeLedgers FinanceLedger[]
 
   @@index([donorId])
@@ -875,11 +875,7 @@ model QurbanSavingContribution {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  savingPlan QurbanSavingPlan @relation(
-    fields: [savingPlanId],
-    references: [id],
-    onDelete: Restrict
-  )
+  savingPlan QurbanSavingPlan @relation(fields: [savingPlanId], references: [id], onDelete: Restrict)
 
   @@index([savingPlanId])
   @@index([status])
@@ -952,11 +948,7 @@ model QurbanOrder {
 
   donor         DonorProfile   @relation(fields: [donorId], references: [id], onDelete: Restrict)
   qurbanPackage QurbanPackage  @relation(fields: [qurbanPackageId], references: [id], onDelete: Restrict)
-  savingPlan    QurbanSavingPlan? @relation(
-    fields: [savingPlanId],
-    references: [id],
-    onDelete: SetNull
-  )
+  savingPlan    QurbanSavingPlan? @relation(fields: [savingPlanId], references: [id], onDelete: SetNull)
 
   animals       QurbanAnimal[]
   documentations QurbanDocumentation[]
@@ -1015,17 +1007,9 @@ model QurbanAnimal {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  qurbanOrder QurbanOrder @relation(
-    fields: [qurbanOrderId],
-    references: [id],
-    onDelete: Restrict
-  )
+  qurbanOrder QurbanOrder @relation(fields: [qurbanOrderId], references: [id], onDelete: Restrict)
 
-  createdBy User @relation(
-    fields: [createdById],
-    references: [id],
-    onDelete: Restrict
-  )
+  createdBy User @relation(fields: [createdById], references: [id], onDelete: Restrict)
 
   documentations QurbanDocumentation[]
 
@@ -1067,23 +1051,11 @@ model QurbanDocumentation {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  qurbanOrder QurbanOrder @relation(
-    fields: [qurbanOrderId],
-    references: [id],
-    onDelete: Cascade
-  )
+  qurbanOrder QurbanOrder @relation(fields: [qurbanOrderId], references: [id], onDelete: Cascade)
 
-  qurbanAnimal QurbanAnimal? @relation(
-    fields: [qurbanAnimalId],
-    references: [id],
-    onDelete: SetNull
-  )
+  qurbanAnimal QurbanAnimal? @relation(fields: [qurbanAnimalId], references: [id], onDelete: SetNull)
 
-  createdBy User @relation(
-    fields: [createdById],
-    references: [id],
-    onDelete: Restrict
-  )
+  createdBy User @relation(fields: [createdById], references: [id], onDelete: Restrict)
 
   @@index([qurbanOrderId])
   @@index([qurbanAnimalId])
@@ -1128,17 +1100,9 @@ model QurbanDistribution {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  qurbanOrder QurbanOrder @relation(
-    fields: [qurbanOrderId],
-    references: [id],
-    onDelete: Restrict
-  )
+  qurbanOrder QurbanOrder @relation(fields: [qurbanOrderId], references: [id], onDelete: Restrict)
 
-  createdBy User @relation(
-    fields: [createdById],
-    references: [id],
-    onDelete: Restrict
-  )
+  createdBy User @relation(fields: [createdById], references: [id], onDelete: Restrict)
 
   beneficiaries QurbanDistributionBeneficiary[]
 
@@ -1173,17 +1137,9 @@ model QurbanDistributionBeneficiary {
 
   createdAt DateTime @default(now())
 
-  distribution QurbanDistribution @relation(
-    fields: [distributionId],
-    references: [id],
-    onDelete: Cascade
-  )
+  distribution QurbanDistribution @relation(fields: [distributionId], references: [id], onDelete: Cascade)
 
-  beneficiary Beneficiary @relation(
-    fields: [beneficiaryId],
-    references: [id],
-    onDelete: Restrict
-  )
+  beneficiary Beneficiary @relation(fields: [beneficiaryId], references: [id], onDelete: Restrict)
 
   @@unique([distributionId, beneficiaryId])
   @@index([distributionId])
