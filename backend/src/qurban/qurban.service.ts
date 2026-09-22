@@ -9,7 +9,7 @@ import {
   Prisma,
   QurbanPackageStatus,
   QurbanSavingStatus,
-
+  QurbanContributionStatus,
 } from '@prisma/client';
 
 import { PrismaService } from '../prisma.service';
