@@ -236,7 +236,7 @@ export class QurbanService {
     }
 
     // -------------------------------------------------------
-    // Duplicate slug
+    // DUPLICATE SLUG CHECK
     // -------------------------------------------------------
 
     if (dto.slug !== undefined) {
@@ -264,7 +264,7 @@ export class QurbanService {
     }
 
     // -------------------------------------------------------
-    // Quantity validation
+    // QUANTITY VALIDATION
     // -------------------------------------------------------
 
     if (
@@ -278,7 +278,7 @@ export class QurbanService {
     }
 
     // -------------------------------------------------------
-    // Update
+    // UPDATE
     // -------------------------------------------------------
 
     const qurbanPackage =
@@ -352,7 +352,7 @@ export class QurbanService {
       });
 
     // -------------------------------------------------------
-    // Audit
+    // AUDIT LOG
     // -------------------------------------------------------
 
     const auditChanges =
