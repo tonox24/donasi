@@ -10,6 +10,7 @@ import {
   QurbanPackageStatus,
   QurbanSavingStatus,
   QurbanContributionStatus,
+  QurbanPriceStatus,
 } from '@prisma/client';
 
 import { PrismaService } from '../prisma.service';
@@ -20,6 +21,7 @@ import { CreateQurbanSavingDto } from './dto/create-qurban-saving.dto';
 import { UpdateQurbanSavingDto } from './dto/update-qurban-saving.dto';
 import { CreateQurbanContributionDto } from './dto/create-qurban-contribution.dto';
 import { CreateQurbanPaymentDto } from './dto/create-qurban-payment.dto';
+import { CreateQurbanPriceAdjustmentDto } from './dto/create-qurban-price-adjustment.dto';
 
 
 @Injectable()
@@ -553,11 +555,38 @@ export class QurbanService {
 
           targetAmount,
 
+          estimatedAmount:
+            targetAmount,
+
+          recommendedTargetAmount:
+            targetAmount,
+
+          finalAmount:
+            null,
+
           currentAmount:
             new Prisma.Decimal(0),
 
           remainingAmount:
             targetAmount,
+
+          shortfallAmount:
+            targetAmount,
+
+          excessAmount:
+            new Prisma.Decimal(0),
+
+          bufferPercentage:
+            null,
+
+          priceStatus:
+            QurbanPriceStatus.ESTIMATED,
+
+          priceFinalizedAt:
+            null,
+
+          priceLockedAt:
+            null,
 
           currency:
             dto.currency
@@ -623,6 +652,16 @@ export class QurbanService {
 
           targetAmount:
             saving.targetAmount.toString(),
+
+          estimatedAmount:
+            saving.estimatedAmount.toString(),
+
+          recommendedTargetAmount:
+            saving.recommendedTargetAmount?.toString() ??
+            null,
+
+          priceStatus:
+            saving.priceStatus,
 
           frequency:
             saving.frequency,
@@ -698,6 +737,12 @@ export class QurbanService {
               createdAt: true,
             },
           },
+
+          priceAdjustments: {
+            orderBy: {
+              effectiveDate: 'desc',
+            },
+          },
         },
       });
 
@@ -743,6 +788,17 @@ export class QurbanService {
 ) {
       throw new ConflictException(
         'This saving plan can no longer be modified',
+      );
+    }
+
+    if (
+      dto.targetAmount !== undefined &&
+      (saving.currentAmount.greaterThan(0) ||
+        saving.finalAmount !== null ||
+        saving.priceStatus === QurbanPriceStatus.LOCKED)
+    ) {
+      throw new ConflictException(
+        'Target amount cannot be changed after contributions or price finalization',
       );
     }
 
@@ -807,7 +863,17 @@ export class QurbanService {
 
           ...(dto.targetAmount !== undefined && {
             targetAmount,
+            estimatedAmount:
+              saving.finalAmount === null
+                ? targetAmount
+                : saving.estimatedAmount,
+            recommendedTargetAmount:
+              saving.finalAmount === null
+                ? targetAmount
+                : saving.recommendedTargetAmount,
             remainingAmount,
+            shortfallAmount: remainingAmount,
+            excessAmount: new Prisma.Decimal(0),
           }),
 
           ...(dto.contributionAmount !== undefined && {
@@ -896,8 +962,17 @@ export class QurbanService {
           id: true,
           savingNumber: true,
           targetAmount: true,
+          estimatedAmount: true,
+          recommendedTargetAmount: true,
+          finalAmount: true,
           currentAmount: true,
           remainingAmount: true,
+          shortfallAmount: true,
+          excessAmount: true,
+          bufferPercentage: true,
+          priceStatus: true,
+          priceFinalizedAt: true,
+          priceLockedAt: true,
           currency: true,
           status: true,
         },
@@ -909,8 +984,12 @@ export class QurbanService {
       );
     }
 
+    const effectiveTarget =
+      saving.finalAmount ??
+      saving.targetAmount;
+
     const target =
-      Number(saving.targetAmount);
+      Number(effectiveTarget);
 
     const current =
       Number(saving.currentAmount);
@@ -932,11 +1011,44 @@ export class QurbanService {
       targetAmount:
         saving.targetAmount.toString(),
 
+      estimatedAmount:
+        saving.estimatedAmount.toString(),
+
+      recommendedTargetAmount:
+        saving.recommendedTargetAmount?.toString() ??
+        null,
+
+      finalAmount:
+        saving.finalAmount?.toString() ??
+        null,
+
+      effectiveTargetAmount:
+        effectiveTarget.toString(),
+
       currentAmount:
         saving.currentAmount.toString(),
 
       remainingAmount:
         saving.remainingAmount.toString(),
+
+      shortfallAmount:
+        saving.shortfallAmount.toString(),
+
+      excessAmount:
+        saving.excessAmount.toString(),
+
+      bufferPercentage:
+        saving.bufferPercentage?.toString() ??
+        null,
+
+      priceStatus:
+        saving.priceStatus,
+
+      priceFinalizedAt:
+        saving.priceFinalizedAt,
+
+      priceLockedAt:
+        saving.priceLockedAt,
 
       currency:
         saving.currency,
@@ -950,6 +1062,7 @@ export class QurbanService {
         saving.status,
     };
   }
+
   // =========================================================
   // CREATE CONTRIBUTION
   // =========================================================
@@ -992,13 +1105,28 @@ export class QurbanService {
         dto.amount,
       );
 
+    const effectiveTarget =
+      saving.finalAmount ??
+      saving.targetAmount;
+
+    const remainingAmount =
+      effectiveTarget.minus(
+        saving.currentAmount,
+      );
+
+    if (remainingAmount.lessThanOrEqualTo(0)) {
+      throw new ConflictException(
+        'Saving plan has already reached its effective target',
+      );
+    }
+
     if (
       amount.greaterThan(
-        saving.remainingAmount,
+        remainingAmount,
       )
     ) {
       throw new BadRequestException(
-        `Contribution exceeds remaining target of ${saving.remainingAmount.toString()}`,
+        `Contribution exceeds remaining target of ${remainingAmount.toString()}`,
       );
     }
 
@@ -1226,25 +1354,42 @@ async markContributionPaid(
       // CALCULATE NEW SAVING BALANCE
       // -----------------------------------------------------
 
+      const effectiveTarget =
+        saving.finalAmount ??
+        saving.targetAmount;
+
       const newCurrentAmount =
         saving.currentAmount.plus(
           contribution.amount,
         );
 
-      if (
-        newCurrentAmount.greaterThan(
-          saving.targetAmount,
-        )
-      ) {
-        throw new ConflictException(
-          'Contribution would exceed saving target',
-        );
-      }
-
+      /*
+       * A contribution may have been created before a final
+       * price adjustment. If the final price subsequently
+       * decreases, the payment can legitimately make the
+       * saving exceed the final target. We record that amount
+       * as excess instead of rejecting the historical payment.
+       */
       const newRemainingAmount =
-        saving.targetAmount.minus(
+        effectiveTarget.greaterThan(
           newCurrentAmount,
-        );
+        )
+          ? effectiveTarget.minus(
+              newCurrentAmount,
+            )
+          : new Prisma.Decimal(0);
+
+      const newShortfallAmount =
+        newRemainingAmount;
+
+      const newExcessAmount =
+        newCurrentAmount.greaterThan(
+          effectiveTarget,
+        )
+          ? newCurrentAmount.minus(
+              effectiveTarget,
+            )
+          : new Prisma.Decimal(0);
 
       const newStatus =
         newRemainingAmount.isZero()
@@ -1321,6 +1466,12 @@ async markContributionPaid(
 
             remainingAmount:
               newRemainingAmount,
+
+            shortfallAmount:
+              newShortfallAmount,
+
+            excessAmount:
+              newExcessAmount,
 
             status:
               newStatus,
@@ -1437,8 +1588,17 @@ async markContributionPaid(
             currentAmount:
               newCurrentAmount.toString(),
 
+            effectiveTargetAmount:
+              effectiveTarget.toString(),
+
             remainingAmount:
               newRemainingAmount.toString(),
+
+            shortfallAmount:
+              newShortfallAmount.toString(),
+
+            excessAmount:
+              newExcessAmount.toString(),
 
             savingStatus:
               newStatus,
@@ -1476,6 +1636,316 @@ async markContributionPaid(
     },
   );
 }
+  // =========================================================
+  // CREATE QURBAN PRICE ADJUSTMENT
+  // =========================================================
+
+  async createPriceAdjustment(
+    savingId: string,
+    dto: CreateQurbanPriceAdjustmentDto,
+    userId: string,
+  ) {
+    return this.prisma.$transaction(
+      async (tx) => {
+        const cleanSavingId =
+          savingId.trim();
+
+        const saving =
+          await tx.qurbanSavingPlan.findUnique({
+            where: {
+              id: cleanSavingId,
+            },
+          });
+
+        if (!saving) {
+          throw new NotFoundException(
+            'Qurban saving plan not found',
+          );
+        }
+
+        if (
+          (
+            [
+              QurbanSavingStatus.COMPLETED,
+              QurbanSavingStatus.QURBAN_EXECUTED,
+              QurbanSavingStatus.CANCELLED,
+              QurbanSavingStatus.REFUNDED,
+            ] as QurbanSavingStatus[]
+          ).includes(saving.status)
+        ) {
+          throw new ConflictException(
+            'Price cannot be adjusted for this saving plan',
+          );
+        }
+
+        if (
+          saving.priceStatus ===
+          QurbanPriceStatus.LOCKED
+        ) {
+          throw new ConflictException(
+            'Qurban price is already locked',
+          );
+        }
+
+        const newAmount =
+          new Prisma.Decimal(
+            dto.finalAmount,
+          );
+
+        if (
+          newAmount.lessThanOrEqualTo(0)
+        ) {
+          throw new BadRequestException(
+            'Final amount must be greater than zero',
+          );
+        }
+
+        const oldAmount =
+          saving.finalAmount ??
+          (saving.estimatedAmount.greaterThan(0)
+            ? saving.estimatedAmount
+            : saving.targetAmount);
+
+        if (
+          saving.finalAmount !== null &&
+          newAmount.equals(
+            saving.finalAmount,
+          )
+        ) {
+          throw new ConflictException(
+            'Final Qurban price is unchanged',
+          );
+        }
+
+        const difference =
+          newAmount.minus(oldAmount);
+
+        const percentage =
+          oldAmount.greaterThan(0)
+            ? difference
+                .dividedBy(oldAmount)
+                .times(100)
+            : null;
+
+        const currentAmount =
+          saving.currentAmount;
+
+        const shortfallAmount =
+          newAmount.greaterThan(
+            currentAmount,
+          )
+            ? newAmount.minus(
+                currentAmount,
+              )
+            : new Prisma.Decimal(0);
+
+        const excessAmount =
+          currentAmount.greaterThan(
+            newAmount,
+          )
+            ? currentAmount.minus(
+                newAmount,
+              )
+            : new Prisma.Decimal(0);
+
+        const remainingAmount =
+          shortfallAmount;
+
+        /*
+         * First finalization:
+         * - same as estimated price => FINALIZED
+         * - different from estimated price => ADJUSTED
+         *
+         * Subsequent price changes are always ADJUSTED.
+         */
+        const priceStatus =
+          saving.finalAmount === null &&
+          newAmount.equals(
+            saving.estimatedAmount,
+          )
+            ? QurbanPriceStatus.FINALIZED
+            : QurbanPriceStatus.ADJUSTED;
+
+        const effectiveDate =
+          dto.effectiveDate
+            ? new Date(dto.effectiveDate)
+            : new Date();
+
+        if (
+          Number.isNaN(
+            effectiveDate.getTime(),
+          )
+        ) {
+          throw new BadRequestException(
+            'Invalid effectiveDate',
+          );
+        }
+
+        const priceAdjustment =
+          await tx.qurbanPriceAdjustment.create({
+            data: {
+              savingPlanId:
+                saving.id,
+
+              oldAmount,
+
+              newAmount,
+
+              difference,
+
+              percentage,
+
+              reason:
+                dto.reason?.trim() ||
+                null,
+
+              effectiveDate,
+
+              approvedById:
+                userId,
+            },
+          });
+
+        const updatedSaving =
+          await tx.qurbanSavingPlan.update({
+            where: {
+              id: saving.id,
+            },
+
+            data: {
+              finalAmount:
+                newAmount,
+
+              remainingAmount:
+                remainingAmount,
+
+              shortfallAmount:
+                shortfallAmount,
+
+              excessAmount:
+                excessAmount,
+
+              priceStatus,
+
+              priceFinalizedAt:
+                new Date(),
+            },
+
+            include: {
+              donor: {
+                select: {
+                  id: true,
+                  fullName: true,
+                  email: true,
+                  phone: true,
+                },
+              },
+            },
+          });
+
+        await tx.auditLog.create({
+          data: {
+            action:
+              'QURBAN_SAVING_PRICE_ADJUSTED',
+
+            entity:
+              'QurbanSavingPlan',
+
+            entityId:
+              saving.id,
+
+            userId,
+
+            metadata: {
+              savingNumber:
+                saving.savingNumber,
+
+              oldAmount:
+                oldAmount.toString(),
+
+              newAmount:
+                newAmount.toString(),
+
+              difference:
+                difference.toString(),
+
+              percentage:
+                percentage?.toString() ??
+                null,
+
+              currentAmount:
+                currentAmount.toString(),
+
+              remainingAmount:
+                remainingAmount.toString(),
+
+              shortfallAmount:
+                shortfallAmount.toString(),
+
+              excessAmount:
+                excessAmount.toString(),
+
+              priceStatus,
+
+              priceAdjustmentId:
+                priceAdjustment.id,
+
+              effectiveDate:
+                effectiveDate.toISOString(),
+
+              reason:
+                dto.reason?.trim() ||
+                null,
+            } as Prisma.InputJsonObject,
+          },
+        });
+
+        return {
+          message:
+            'Qurban price adjusted successfully',
+
+          priceAdjustment,
+
+          saving:
+            updatedSaving,
+
+          settlement: {
+            previousPrice:
+              oldAmount.toString(),
+
+            finalPrice:
+              newAmount.toString(),
+
+            difference:
+              difference.toString(),
+
+            percentage:
+              percentage?.toString() ??
+              null,
+
+            currentAmount:
+              currentAmount.toString(),
+
+            remainingAmount:
+              remainingAmount.toString(),
+
+            shortfallAmount:
+              shortfallAmount.toString(),
+
+            excessAmount:
+              excessAmount.toString(),
+
+            priceStatus,
+          },
+        };
+      },
+      {
+        isolationLevel:
+          Prisma.TransactionIsolationLevel.Serializable,
+      },
+    );
+  }
+
   // =========================================================
   // MARK CONTRIBUTION FAILED
   // =========================================================
