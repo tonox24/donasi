@@ -19,10 +19,12 @@ import { CurrentUser } from '../auth/current-user.decorator';
 
 import { Permissions } from '../rbac/permissions.decorator';
 import { PermissionsGuard } from '../rbac/permissions.guard';
+
 import { CreateQurbanSavingDto } from './dto/create-qurban-saving.dto';
 import { UpdateQurbanSavingDto } from './dto/update-qurban-saving.dto';
 import { CreateQurbanContributionDto } from './dto/create-qurban-contribution.dto';
 import { CreateQurbanPaymentDto } from './dto/create-qurban-payment.dto';
+import { CreateQurbanPriceAdjustmentDto } from './dto/create-qurban-price-adjustment.dto';
 
 @Controller('qurban')
 export class QurbanController {
@@ -47,7 +49,7 @@ export class QurbanController {
   }
 
   // =========================================================
-  // MANAGEMENT - CREATE
+  // MANAGEMENT - CREATE PACKAGE
   // =========================================================
 
   @UseGuards(
@@ -67,7 +69,7 @@ export class QurbanController {
   }
 
   // =========================================================
-  // MANAGEMENT - UPDATE
+  // MANAGEMENT - UPDATE PACKAGE
   // =========================================================
 
   @UseGuards(
@@ -89,7 +91,7 @@ export class QurbanController {
   }
 
   // =========================================================
-  // MANAGEMENT - DELETE
+  // MANAGEMENT - DELETE PACKAGE
   // =========================================================
 
   @UseGuards(
@@ -109,7 +111,7 @@ export class QurbanController {
   }
 
   // =========================================================
-  // TABUNGAN QURBAN
+  // TABUNGAN QURBAN - CREATE
   // =========================================================
 
   @UseGuards(
@@ -128,6 +130,10 @@ export class QurbanController {
     );
   }
 
+  // =========================================================
+  // TABUNGAN QURBAN - LIST
+  // =========================================================
+
   @UseGuards(
     JwtAuthGuard,
     PermissionsGuard,
@@ -137,6 +143,10 @@ export class QurbanController {
   findAllSavings() {
     return this.qurbanService.findAllSavings();
   }
+
+  // =========================================================
+  // TABUNGAN QURBAN - DETAIL
+  // =========================================================
 
   @UseGuards(
     JwtAuthGuard,
@@ -150,6 +160,10 @@ export class QurbanController {
     return this.qurbanService.findOneSaving(id);
   }
 
+  // =========================================================
+  // TABUNGAN QURBAN - UPDATE
+  // =========================================================
+
   @UseGuards(
     JwtAuthGuard,
     PermissionsGuard,
@@ -162,6 +176,38 @@ export class QurbanController {
     @CurrentUser() user: { id: string },
   ) {
     return this.qurbanService.updateSaving(
+      id,
+      dto,
+      user.id,
+    );
+  }
+
+  // =========================================================
+  // QURBAN PRICE ADJUSTMENT
+  // =========================================================
+  //
+  // Example:
+  //
+  // Estimated price : Rp4.000.000
+  // Final price     : Rp4.800.000
+  // Difference      : Rp800.000
+  // Shortfall       : Rp800.000
+  //
+  // Existing contributions are NOT modified.
+  // =========================================================
+
+  @UseGuards(
+    JwtAuthGuard,
+    PermissionsGuard,
+  )
+  @Permissions('qurban.manage')
+  @Post('savings/:id/price-adjustment')
+  createPriceAdjustment(
+    @Param('id') id: string,
+    @Body() dto: CreateQurbanPriceAdjustmentDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.qurbanService.createPriceAdjustment(
       id,
       dto,
       user.id,
@@ -185,7 +231,7 @@ export class QurbanController {
   }
 
   // =========================================================
-  // CONTRIBUTIONS
+  // CONTRIBUTIONS - CREATE
   // =========================================================
 
   @UseGuards(
@@ -206,6 +252,10 @@ export class QurbanController {
     );
   }
 
+  // =========================================================
+  // CONTRIBUTIONS - LIST
+  // =========================================================
+
   @UseGuards(
     JwtAuthGuard,
     PermissionsGuard,
@@ -217,7 +267,7 @@ export class QurbanController {
   ) {
     return this.qurbanService.findContributions(id);
   }
-  
+
   // =========================================================
   // CREATE QURBAN PAYMENT
   // =========================================================
@@ -243,8 +293,9 @@ export class QurbanController {
       user.id,
     );
   }
+
   // =========================================================
-  // PAYMENT RECONCILIATION
+  // PAYMENT RECONCILIATION - PAID
   // =========================================================
 
   @UseGuards(
@@ -266,6 +317,10 @@ export class QurbanController {
       user.id,
     );
   }
+
+  // =========================================================
+  // PAYMENT RECONCILIATION - FAILED
+  // =========================================================
 
   @UseGuards(
     JwtAuthGuard,
