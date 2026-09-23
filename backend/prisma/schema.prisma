@@ -295,6 +295,7 @@ model FinanceLedger {
   paymentTransactionId String?
   receiptId            String?
   campaignId           String?
+  qurbanPaymentTransactionId String?
 
   description          String?
 
@@ -319,6 +320,7 @@ model FinanceLedger {
   @@index([donationId])
   @@index([paymentTransactionId])
   @@index([campaignId])
+  @@index([qurbanPaymentTransactionId])
 }
 
 /*
@@ -934,6 +936,8 @@ model QurbanSavingContribution {
 
   savingPlan QurbanSavingPlan @relation(fields: [savingPlanId], references: [id], onDelete: Restrict)
 
+  paymentTransactions QurbanPaymentTransaction[]
+
   @@index([savingPlanId])
   @@index([status])
   @@index([contributionDate])
@@ -1009,6 +1013,7 @@ model QurbanOrder {
 
   animals       QurbanAnimal[]
   documentations QurbanDocumentation[]
+  qurbanPaymentTransactions QurbanPaymentTransaction[]
   distributions QurbanDistribution[]
 
   @@index([donorId])
