@@ -312,8 +312,8 @@ model FinanceLedger {
   donation             Donation?           @relation(fields: [donationId], references: [id], onDelete: Restrict)
   paymentTransaction   PaymentTransaction? @relation(fields: [paymentTransactionId], references: [id], onDelete: Restrict)
   receipt              Receipt?            @relation(fields: [receiptId], references: [id], onDelete: Restrict)
-  campaign             Campaign?           @relation(fields: [campaignId], references: [id], onDelete: Restrict)
-
+  campaign                 Campaign?                 @relation(fields: [campaignId], references: [id], onDelete: Restrict)
+  qurbanPaymentTransaction QurbanPaymentTransaction? @relation(fields: [qurbanPaymentTransactionId], references: [id], onDelete: Restrict)
 
   @@index([transactionDate])
   @@index([type])
