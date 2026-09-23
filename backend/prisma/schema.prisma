@@ -314,6 +314,7 @@ model FinanceLedger {
   receipt              Receipt?            @relation(fields: [receiptId], references: [id], onDelete: Restrict)
   campaign             Campaign?           @relation(fields: [campaignId], references: [id], onDelete: Restrict)
 
+
   @@index([transactionDate])
   @@index([type])
   @@index([status])
@@ -667,19 +668,9 @@ model QurbanPaymentTransaction {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  qurbanSavingContribution QurbanSavingContribution?
-    @relation(
-      fields: [qurbanSavingContributionId],
-      references: [id],
-      onDelete: Restrict
-    )
+  qurbanSavingContribution QurbanSavingContribution? @relation(fields: [qurbanSavingContributionId], references: [id], onDelete: Restrict)
 
-  qurbanOrder QurbanOrder?
-    @relation(
-      fields: [qurbanOrderId],
-      references: [id],
-      onDelete: Restrict
-    )
+  qurbanOrder QurbanOrder? @relation(fields: [qurbanOrderId], references: [id], onDelete: Restrict)
 
   financeLedgers FinanceLedger[]
 
