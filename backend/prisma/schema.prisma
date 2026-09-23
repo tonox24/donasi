@@ -849,70 +849,29 @@ model QurbanSavingPlan {
 
   qurbanAnimalType QurbanAnimalType
 
-  /*
- * Initial target amount agreed when the saving plan was created.
- */
-targetAmount Decimal @db.Decimal(18, 2)
+  targetAmount Decimal @db.Decimal(18, 2)
 
-/*
- * Original estimated animal price when the saving plan was created.
- *
- * This value is historical and must never be changed
- * when the actual Qurban price changes.
- */
-estimatedAmount Decimal @default(0) @db.Decimal(18, 2)
+  estimatedAmount Decimal @default(0) @db.Decimal(18, 2)
 
-/*
- * Recommended target including optional price buffer.
- */
-recommendedTargetAmount Decimal? @db.Decimal(18, 2)
+  recommendedTargetAmount Decimal? @db.Decimal(18, 2)
 
-/*
- * Final price confirmed for Qurban execution.
- *
- * NULL means the final price has not yet been determined.
- */
-finalAmount Decimal? @db.Decimal(18, 2)
+  finalAmount Decimal? @db.Decimal(18, 2)
 
-/*
- * Total successful contributions.
- */
+  currentAmount Decimal @default(0) @db.Decimal(18, 2)
 
-
-/*
- * Remaining amount based on the effective Qurban price.
- */
-remainingAmount Decimal @default(0) @db.Decimal(18, 2)
-
-/*
- * Amount still required after final price settlement.
- */
-shortfallAmount Decimal @default(0) @db.Decimal(18, 2)
-
-/*
- * Amount above the final price if accumulated savings
- * are greater than the final Qurban price.
- */
-excessAmount Decimal @default(0) @db.Decimal(18, 2)
-
-/*
- * Optional price buffer percentage.
- *
- * Example:
- * 20 = 20%
- */
-bufferPercentage Decimal? @db.Decimal(5, 2)
-
-priceStatus QurbanPriceStatus @default(ESTIMATED)
-
-priceFinalizedAt DateTime?
-
-priceLockedAt DateTime?
-
-  /*
-   * Remaining amount to reach the target.
-   */
   remainingAmount Decimal @default(0) @db.Decimal(18, 2)
+
+  shortfallAmount Decimal @default(0) @db.Decimal(18, 2)
+
+  excessAmount Decimal @default(0) @db.Decimal(18, 2)
+
+  bufferPercentage Decimal? @db.Decimal(5, 2)
+
+  priceStatus QurbanPriceStatus @default(ESTIMATED)
+
+  priceFinalizedAt DateTime?
+
+  priceLockedAt DateTime?
 
   currency String @default("IDR")
 
@@ -920,19 +879,13 @@ priceLockedAt DateTime?
 
   frequency QurbanSavingFrequency
 
-  startDate  DateTime
+  startDate DateTime
   targetDate DateTime
 
   status QurbanSavingStatus @default(ACTIVE)
 
-  /*
-   * Optional information about the selected destination.
-   */
   distributionLocation String?
 
-  /*
-   * Optional pekurban name.
-   */
   pekurbanName String?
 
   notes String?
@@ -942,8 +895,10 @@ priceLockedAt DateTime?
 
   donor DonorProfile @relation(fields: [donorId], references: [id], onDelete: Restrict)
 
-  contributions   QurbanSavingContribution[]
-  orders          QurbanOrder[]
+  contributions QurbanSavingContribution[]
+
+  orders QurbanOrder[]
+
   priceAdjustments QurbanPriceAdjustment[]
 
   @@index([donorId])
@@ -1009,11 +964,7 @@ model QurbanPriceAdjustment {
 
   createdAt DateTime @default(now())
 
-  savingPlan QurbanSavingPlan @relation(
-    fields: [savingPlanId],
-    references: [id],
-    onDelete: Restrict
-  )
+  savingPlan QurbanSavingPlan @relation(fields: [savingPlanId], references: [id], onDelete: Restrict)
 
   @@index([savingPlanId])
   @@index([effectiveDate])
