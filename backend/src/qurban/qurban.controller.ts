@@ -22,6 +22,7 @@ import { PermissionsGuard } from '../rbac/permissions.guard';
 import { CreateQurbanSavingDto } from './dto/create-qurban-saving.dto';
 import { UpdateQurbanSavingDto } from './dto/update-qurban-saving.dto';
 import { CreateQurbanContributionDto } from './dto/create-qurban-contribution.dto';
+import { CreateQurbanPaymentDto } from './dto/create-qurban-payment.dto';
 
 @Controller('qurban')
 export class QurbanController {
@@ -216,7 +217,32 @@ export class QurbanController {
   ) {
     return this.qurbanService.findContributions(id);
   }
+  
+  // =========================================================
+  // CREATE QURBAN PAYMENT
+  // =========================================================
 
+  @UseGuards(
+    JwtAuthGuard,
+    PermissionsGuard,
+  )
+  @Permissions('qurban.manage')
+  @Post(
+    'savings/:id/contributions/:contributionId/payment',
+  )
+  createContributionPayment(
+    @Param('id') id: string,
+    @Param('contributionId') contributionId: string,
+    @Body() dto: CreateQurbanPaymentDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.qurbanService.createContributionPayment(
+      id,
+      contributionId,
+      dto,
+      user.id,
+    );
+  }
   // =========================================================
   // PAYMENT RECONCILIATION
   // =========================================================
