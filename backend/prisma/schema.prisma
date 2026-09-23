@@ -169,6 +169,13 @@ enum QurbanSavingFrequency {
   CUSTOM
 }
 
+enum QurbanPriceStatus {
+  ESTIMATED
+  FINALIZED
+  ADJUSTED
+  LOCKED
+}
+
 model User {
   id           String     @id @default(uuid())
   email        String     @unique
@@ -843,14 +850,64 @@ model QurbanSavingPlan {
   qurbanAnimalType QurbanAnimalType
 
   /*
-   * Target amount required to fulfill the selected Qurban package.
-   */
-  targetAmount Decimal @db.Decimal(18, 2)
+ * Initial target amount agreed when the saving plan was created.
+ */
+targetAmount Decimal @db.Decimal(18, 2)
 
-  /*
-   * Total successful contributions.
-   */
-  currentAmount Decimal @default(0) @db.Decimal(18, 2)
+/*
+ * Original estimated animal price when the saving plan was created.
+ *
+ * This value is historical and must never be changed
+ * when the actual Qurban price changes.
+ */
+estimatedAmount Decimal @default(0) @db.Decimal(18, 2)
+
+/*
+ * Recommended target including optional price buffer.
+ */
+recommendedTargetAmount Decimal? @db.Decimal(18, 2)
+
+/*
+ * Final price confirmed for Qurban execution.
+ *
+ * NULL means the final price has not yet been determined.
+ */
+finalAmount Decimal? @db.Decimal(18, 2)
+
+/*
+ * Total successful contributions.
+ */
+
+
+/*
+ * Remaining amount based on the effective Qurban price.
+ */
+remainingAmount Decimal @default(0) @db.Decimal(18, 2)
+
+/*
+ * Amount still required after final price settlement.
+ */
+shortfallAmount Decimal @default(0) @db.Decimal(18, 2)
+
+/*
+ * Amount above the final price if accumulated savings
+ * are greater than the final Qurban price.
+ */
+excessAmount Decimal @default(0) @db.Decimal(18, 2)
+
+/*
+ * Optional price buffer percentage.
+ *
+ * Example:
+ * 20 = 20%
+ */
+bufferPercentage Decimal? @db.Decimal(5, 2)
+
+priceStatus QurbanPriceStatus @default(ESTIMATED)
+
+priceFinalizedAt DateTime?
+
+priceLockedAt DateTime?
 
   /*
    * Remaining amount to reach the target.
@@ -885,13 +942,81 @@ model QurbanSavingPlan {
 
   donor DonorProfile @relation(fields: [donorId], references: [id], onDelete: Restrict)
 
-  contributions QurbanSavingContribution[]
-  orders        QurbanOrder[]
+  contributions   QurbanSavingContribution[]
+  orders          QurbanOrder[]
+  priceAdjustments QurbanPriceAdjustment[]
 
   @@index([donorId])
   @@index([status])
   @@index([qurbanAnimalType])
   @@index([targetDate])
+}
+
+/*
+|--------------------------------------------------------------------------
+| QURBAN PRICE ADJUSTMENT
+|--------------------------------------------------------------------------
+| Stores the complete history of Qurban price changes.
+|
+| Important:
+| Existing contributions are NEVER modified when the Qurban price changes.
+|--------------------------------------------------------------------------
+*/
+
+model QurbanPriceAdjustment {
+  id String @id @default(uuid())
+
+  savingPlanId String
+
+  /*
+   * Previous effective Qurban price.
+   */
+  oldAmount Decimal @db.Decimal(18, 2)
+
+  /*
+   * New effective Qurban price.
+   */
+  newAmount Decimal @db.Decimal(18, 2)
+
+  /*
+   * Difference between old and new price.
+   */
+  difference Decimal @db.Decimal(18, 2)
+
+  /*
+   * Percentage change.
+   *
+   * Example:
+   * 20 = 20% increase
+   * -10 = 10% decrease
+   */
+  percentage Decimal? @db.Decimal(7, 2)
+
+  /*
+   * Reason for the price adjustment.
+   */
+  reason String?
+
+  /*
+   * Date when the new price becomes effective.
+   */
+  effectiveDate DateTime
+
+  /*
+   * User who approved the price adjustment.
+   */
+  approvedById String?
+
+  createdAt DateTime @default(now())
+
+  savingPlan QurbanSavingPlan @relation(
+    fields: [savingPlanId],
+    references: [id],
+    onDelete: Restrict
+  )
+
+  @@index([savingPlanId])
+  @@index([effectiveDate])
 }
 
 
