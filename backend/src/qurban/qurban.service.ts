@@ -1104,184 +1104,378 @@ export class QurbanService {
       },
     });
   }
-  // =========================================================
-  // MARK CONTRIBUTION PAID
-  // =========================================================
+ // =========================================================
+// MARK CONTRIBUTION PAID
+// =========================================================
 
-  async markContributionPaid(
-    savingId: string,
-    contributionId: string,
-    userId: string,
-  ) {
-    return this.prisma.$transaction(
-      async (tx) => {
-        const contribution =
-          await tx.qurbanSavingContribution.findFirst({
-            where: {
-              id:
-                contributionId.trim(),
-
-              savingPlanId:
-                savingId.trim(),
-            },
-          });
-
-        if (!contribution) {
-          throw new NotFoundException(
-            'Qurban saving contribution not found',
-          );
-        }
-
-        if (
-          contribution.status ===
-          QurbanContributionStatus.PAID
-        ) {
-          throw new ConflictException(
-            'Contribution is already paid',
-          );
-        }
-
-        if (
-          contribution.status !==
-          QurbanContributionStatus.PENDING
-        ) {
-          throw new ConflictException(
-            `Contribution cannot be paid from status ${contribution.status}`,
-          );
-        }
-
-        const saving =
-          await tx.qurbanSavingPlan.findUnique({
-            where: {
-              id:
-                savingId.trim(),
-            },
-          });
-
-        if (!saving) {
-          throw new NotFoundException(
-            'Qurban saving plan not found',
-          );
-        }
-
-        if (
-  (
-    [
-      QurbanSavingStatus.CANCELLED,
-      QurbanSavingStatus.REFUNDED,
-      QurbanSavingStatus.QURBAN_EXECUTED,
-    ] as QurbanSavingStatus[]
-  ).includes(
-    saving.status,
-  )
+async markContributionPaid(
+  savingId: string,
+  contributionId: string,
+  userId: string,
 ) {
-          throw new ConflictException(
-            'Saving plan cannot receive payment',
-          );
-        }
+  return this.prisma.$transaction(
+    async (tx) => {
+      const cleanSavingId = savingId.trim();
+      const cleanContributionId = contributionId.trim();
 
-        const newCurrentAmount =
-          saving.currentAmount.plus(
-            contribution.amount,
-          );
+      // -----------------------------------------------------
+      // GET CONTRIBUTION
+      // -----------------------------------------------------
 
-        if (
-          newCurrentAmount.greaterThan(
-            saving.targetAmount,
-          )
-        ) {
-          throw new ConflictException(
-            'Contribution would exceed saving target',
-          );
-        }
+      const contribution =
+        await tx.qurbanSavingContribution.findFirst({
+          where: {
+            id: cleanContributionId,
+            savingPlanId: cleanSavingId,
+          },
+        });
 
-        const newRemainingAmount =
-          saving.targetAmount.minus(
-            newCurrentAmount,
-          );
+      if (!contribution) {
+        throw new NotFoundException(
+          'Qurban saving contribution not found',
+        );
+      }
 
-        const newStatus =
-          newRemainingAmount.isZero()
-            ? QurbanSavingStatus.COMPLETED
-            : QurbanSavingStatus.ON_TRACK;
+      // -----------------------------------------------------
+      // CONTRIBUTION STATUS VALIDATION
+      // -----------------------------------------------------
 
-        const updatedContribution =
-          await tx.qurbanSavingContribution.update({
-            where: {
-              id:
-                contribution.id,
-            },
+      if (
+        contribution.status ===
+        QurbanContributionStatus.PAID
+      ) {
+        throw new ConflictException(
+          'Contribution is already paid',
+        );
+      }
 
-            data: {
-              status:
-                QurbanContributionStatus.PAID,
-            },
-          });
+      if (
+        contribution.status !==
+        QurbanContributionStatus.PENDING
+      ) {
+        throw new ConflictException(
+          `Contribution cannot be paid from status ${contribution.status}`,
+        );
+      }
 
-        const updatedSaving =
-          await tx.qurbanSavingPlan.update({
-            where: {
-              id:
-                saving.id,
-            },
+      // -----------------------------------------------------
+      // GET SAVING PLAN
+      // -----------------------------------------------------
 
-            data: {
-              currentAmount:
-                newCurrentAmount,
+      const saving =
+        await tx.qurbanSavingPlan.findUnique({
+          where: {
+            id: cleanSavingId,
+          },
+        });
 
-              remainingAmount:
-                newRemainingAmount,
+      if (!saving) {
+        throw new NotFoundException(
+          'Qurban saving plan not found',
+        );
+      }
 
-              status:
-                newStatus,
-            },
-          });
+      // -----------------------------------------------------
+      // SAVING STATUS VALIDATION
+      // -----------------------------------------------------
 
-        await tx.auditLog.create({
-          data: {
-            action:
-              'QURBAN_SAVING_CONTRIBUTION_PAID',
+      if (
+        (
+          [
+            QurbanSavingStatus.CANCELLED,
+            QurbanSavingStatus.REFUNDED,
+            QurbanSavingStatus.QURBAN_EXECUTED,
+          ] as QurbanSavingStatus[]
+        ).includes(saving.status)
+      ) {
+        throw new ConflictException(
+          'Saving plan cannot receive payment',
+        );
+      }
 
-            entity:
-              'QurbanSavingContribution',
+      // -----------------------------------------------------
+      // FIND ACTIVE PAYMENT
+      // -----------------------------------------------------
 
-            entityId:
+      const payment =
+        await tx.qurbanPaymentTransaction.findFirst({
+          where: {
+            qurbanSavingContributionId:
               contribution.id,
 
-            userId,
+            status: {
+              in: [
+                'INITIATED',
+                'PENDING',
+              ],
+            },
+          },
 
-            metadata: {
-              savingPlanId:
-                saving.id,
+          orderBy: {
+            createdAt: 'desc',
+          },
+        });
 
-              contributionNumber:
-                contribution.contributionNumber,
+      if (!payment) {
+        throw new ConflictException(
+          'No active payment transaction found for this contribution',
+        );
+      }
 
-              amount:
-                contribution.amount.toString(),
+      // -----------------------------------------------------
+      // CALCULATE NEW SAVING BALANCE
+      // -----------------------------------------------------
 
-              currentAmount:
-                newCurrentAmount.toString(),
+      const newCurrentAmount =
+        saving.currentAmount.plus(
+          contribution.amount,
+        );
 
-              remainingAmount:
-                newRemainingAmount.toString(),
+      if (
+        newCurrentAmount.greaterThan(
+          saving.targetAmount,
+        )
+      ) {
+        throw new ConflictException(
+          'Contribution would exceed saving target',
+        );
+      }
 
-              savingStatus:
-                newStatus,
+      const newRemainingAmount =
+        saving.targetAmount.minus(
+          newCurrentAmount,
+        );
+
+      const newStatus =
+        newRemainingAmount.isZero()
+          ? QurbanSavingStatus.COMPLETED
+          : QurbanSavingStatus.ON_TRACK;
+
+      const paidAt = new Date();
+
+      // -----------------------------------------------------
+      // UPDATE PAYMENT → PAID
+      // -----------------------------------------------------
+
+      const updatedPayment =
+        await tx.qurbanPaymentTransaction.update({
+          where: {
+            id: payment.id,
+          },
+
+          data: {
+            status: 'PAID',
+
+            paidAt,
+
+            providerTransactionId:
+              payment.providerTransactionId ??
+              payment.transactionReference,
+
+            rawResponse: {
+              status: 'PAID',
+              provider: payment.provider,
+              source: 'QURBAN_RECONCILIATION',
+              reconciledBy: userId,
+              reconciledAt:
+                paidAt.toISOString(),
             },
           },
         });
 
-        return {
-          contribution:
-            updatedContribution,
+      // -----------------------------------------------------
+      // UPDATE CONTRIBUTION → PAID
+      // -----------------------------------------------------
 
-          saving:
-            updatedSaving,
-        };
-      },
-    );
-  }
+      const updatedContribution =
+        await tx.qurbanSavingContribution.update({
+          where: {
+            id: contribution.id,
+          },
+
+          data: {
+            status:
+              QurbanContributionStatus.PAID,
+
+            paymentReference:
+              updatedPayment.transactionReference,
+
+            providerTransactionId:
+              updatedPayment.providerTransactionId,
+          },
+        });
+
+      // -----------------------------------------------------
+      // UPDATE SAVING PLAN
+      // -----------------------------------------------------
+
+      const updatedSaving =
+        await tx.qurbanSavingPlan.update({
+          where: {
+            id: saving.id,
+          },
+
+          data: {
+            currentAmount:
+              newCurrentAmount,
+
+            remainingAmount:
+              newRemainingAmount,
+
+            status:
+              newStatus,
+          },
+        });
+
+      // -----------------------------------------------------
+      // FINANCE LEDGER
+      // -----------------------------------------------------
+
+      const ledgerReference =
+        `QURBAN-CONTRIBUTION-${contribution.id}`;
+
+      const ledger =
+        await tx.financeLedger.upsert({
+          where: {
+            reference: ledgerReference,
+          },
+
+          create: {
+            transactionDate: paidAt,
+
+            type: 'INCOME',
+
+            status: 'POSTED',
+
+            reference:
+              ledgerReference,
+
+            qurbanPaymentTransactionId:
+              updatedPayment.id,
+
+            description:
+              `Tabungan Qurban contribution ${contribution.contributionNumber}`,
+
+            amount:
+              contribution.amount,
+
+            currency:
+              contribution.currency,
+
+            metadata: {
+              source:
+                'QURBAN_SAVING',
+
+              savingPlanId:
+                saving.id,
+
+              savingNumber:
+                saving.savingNumber,
+
+              contributionId:
+                contribution.id,
+
+              contributionNumber:
+                contribution.contributionNumber,
+
+              paymentTransactionId:
+                updatedPayment.id,
+
+              transactionReference:
+                updatedPayment.transactionReference,
+
+              provider:
+                updatedPayment.provider,
+
+              paymentMethod:
+                updatedPayment.paymentMethod,
+            },
+
+            createdById:
+              userId,
+          },
+
+          update: {},
+        });
+
+      // -----------------------------------------------------
+      // AUDIT LOG
+      // -----------------------------------------------------
+
+      await tx.auditLog.create({
+        data: {
+          action:
+            'QURBAN_SAVING_CONTRIBUTION_PAID',
+
+          entity:
+            'QurbanSavingContribution',
+
+          entityId:
+            contribution.id,
+
+          userId,
+
+          metadata: {
+            savingPlanId:
+              saving.id,
+
+            savingNumber:
+              saving.savingNumber,
+
+            contributionNumber:
+              contribution.contributionNumber,
+
+            paymentTransactionId:
+              updatedPayment.id,
+
+            transactionReference:
+              updatedPayment.transactionReference,
+
+            amount:
+              contribution.amount.toString(),
+
+            currentAmount:
+              newCurrentAmount.toString(),
+
+            remainingAmount:
+              newRemainingAmount.toString(),
+
+            savingStatus:
+              newStatus,
+
+            financeLedgerId:
+              ledger.id,
+
+            financeLedgerReference:
+              ledger.reference,
+          },
+        },
+      });
+
+      // -----------------------------------------------------
+      // RESPONSE
+      // -----------------------------------------------------
+
+      return {
+        contribution:
+          updatedContribution,
+
+        payment:
+          updatedPayment,
+
+        saving:
+          updatedSaving,
+
+        financeLedger:
+          ledger,
+      };
+    },
+    {
+      isolationLevel:
+        Prisma.TransactionIsolationLevel.Serializable,
+    },
+  );
+}
   // =========================================================
   // MARK CONTRIBUTION FAILED
   // =========================================================
