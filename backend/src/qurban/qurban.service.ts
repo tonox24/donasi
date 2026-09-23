@@ -19,6 +19,7 @@ import { UpdateQurbanPackageDto } from './dto/update-qurban-package.dto';
 import { CreateQurbanSavingDto } from './dto/create-qurban-saving.dto';
 import { UpdateQurbanSavingDto } from './dto/update-qurban-saving.dto';
 import { CreateQurbanContributionDto } from './dto/create-qurban-contribution.dto';
+import { CreateQurbanPaymentDto } from './dto/create-qurban-payment.dto';
 
 
 @Injectable()
@@ -1355,3 +1356,139 @@ export class QurbanService {
     return updated;
   }
 }
+  // =========================================================
+  // CREATE QURBAN PAYMENT
+  // =========================================================
+
+  async createContributionPayment(
+    savingId: string,
+    contributionId: string,
+    dto: CreateQurbanPaymentDto,
+    userId: string,
+  ) {
+    const contribution =
+      await this.prisma.qurbanSavingContribution.findFirst({
+        where: {
+          id: contributionId.trim(),
+          savingPlanId: savingId.trim(),
+        },
+      });
+
+    if (!contribution) {
+      throw new NotFoundException(
+        'Qurban saving contribution not found',
+      );
+    }
+
+    if (
+      contribution.status !==
+      QurbanContributionStatus.PENDING
+    ) {
+      throw new ConflictException(
+        `Payment cannot be created from contribution status ${contribution.status}`,
+      );
+    }
+
+    const existingPayment =
+      await this.prisma.qurbanPaymentTransaction.findFirst({
+        where: {
+          qurbanSavingContributionId:
+            contribution.id,
+
+          status: {
+            in: [
+              'INITIATED',
+              'PENDING',
+              'PAID',
+            ],
+          },
+        },
+
+        orderBy: {
+          createdAt: 'desc',
+        },
+      });
+
+    if (existingPayment) {
+      throw new ConflictException(
+        'An active payment already exists for this contribution',
+      );
+    }
+
+    const provider =
+      dto.provider?.trim().toUpperCase() ||
+      'MOCK';
+
+    const random =
+      Math.random()
+        .toString(36)
+        .substring(2, 8)
+        .toUpperCase();
+
+    const transactionReference =
+      `QSC-${Date.now()}-${random}`;
+
+    const payment =
+      await this.prisma.qurbanPaymentTransaction.create({
+        data: {
+          qurbanSavingContributionId:
+            contribution.id,
+
+          transactionReference,
+
+          provider,
+
+          paymentMethod:
+            dto.paymentMethod
+              .trim()
+              .toUpperCase(),
+
+          amount:
+            contribution.amount,
+
+          currency:
+            contribution.currency,
+
+          status:
+            'INITIATED',
+        },
+      });
+
+    await this.prisma.auditLog.create({
+      data: {
+        action:
+          'QURBAN_PAYMENT_CREATED',
+
+        entity:
+          'QurbanPaymentTransaction',
+
+        entityId:
+          payment.id,
+
+        userId,
+
+        metadata: {
+          contributionId:
+            contribution.id,
+
+          savingPlanId:
+            savingId,
+
+          transactionReference,
+
+          amount:
+            contribution.amount.toString(),
+
+          currency:
+            contribution.currency,
+
+          provider,
+
+          paymentMethod:
+            dto.paymentMethod,
+        },
+      },
+    });
+
+    return payment;
+  }
