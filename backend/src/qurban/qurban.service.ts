@@ -1492,3 +1492,4 @@ export class QurbanService {
 
     return payment;
   }
+}
