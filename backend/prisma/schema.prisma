@@ -630,7 +630,64 @@ model PaymentTransaction {
   @@index([providerTransactionId])
   @@index([createdAt])
 }
+/*
+|--------------------------------------------------------------------------
+| QURBAN PAYMENT TRANSACTION
+|--------------------------------------------------------------------------
+| Payment transaction khusus untuk Qurban.
+| Dipisahkan dari PaymentTransaction Donation agar
+| payment flow Donation tetap backward-compatible.
+|--------------------------------------------------------------------------
+*/
 
+model QurbanPaymentTransaction {
+  id String @id @default(uuid())
+
+  qurbanSavingContributionId String?
+  qurbanOrderId              String?
+
+  transactionReference String @unique
+
+  provider      String
+  paymentMethod String
+
+  amount   Decimal @db.Decimal(18, 2)
+  currency String  @default("IDR")
+
+  status PaymentStatus @default(INITIATED)
+
+  providerTransactionId String?
+  paidAt                DateTime?
+  expiredAt             DateTime?
+
+  rawResponse Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  qurbanSavingContribution QurbanSavingContribution?
+    @relation(
+      fields: [qurbanSavingContributionId],
+      references: [id],
+      onDelete: Restrict
+    )
+
+  qurbanOrder QurbanOrder?
+    @relation(
+      fields: [qurbanOrderId],
+      references: [id],
+      onDelete: Restrict
+    )
+
+  financeLedgers FinanceLedger[]
+
+  @@index([qurbanSavingContributionId])
+  @@index([qurbanOrderId])
+  @@index([provider])
+  @@index([status])
+  @@index([providerTransactionId])
+  @@index([createdAt])
+}
 /*
 |--------------------------------------------------------------------------
 | CAMPAIGN IMPACT
