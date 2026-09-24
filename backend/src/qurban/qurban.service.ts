@@ -22,6 +22,7 @@ import { UpdateQurbanSavingDto } from './dto/update-qurban-saving.dto';
 import { CreateQurbanContributionDto } from './dto/create-qurban-contribution.dto';
 import { CreateQurbanPaymentDto } from './dto/create-qurban-payment.dto';
 import { CreateQurbanPriceAdjustmentDto } from './dto/create-qurban-price-adjustment.dto';
+import { CreateQurbanOrderDto } from './dto/create-qurban-order.dto';
 
 
 @Injectable()
@@ -459,6 +460,343 @@ export class QurbanService {
     };
   }
 
+// =========================================================
+// CREATE QURBAN ORDER
+// =========================================================
+
+async createOrder(
+  dto: CreateQurbanOrderDto,
+  userId: string,
+) {
+  return this.prisma.$transaction(
+    async (tx) => {
+      // ---------------------------------------------------
+      // FIND DONOR
+      // ---------------------------------------------------
+
+      const donor =
+        await tx.donorProfile.findUnique({
+          where: {
+            id: dto.donorId,
+          },
+        });
+
+      if (!donor) {
+        throw new NotFoundException(
+          'Donor not found',
+        );
+      }
+
+      if (donor.status !== 'ACTIVE') {
+        throw new ConflictException(
+          'Donor is not active',
+        );
+      }
+
+      // ---------------------------------------------------
+      // FIND PACKAGE
+      // ---------------------------------------------------
+
+      const qurbanPackage =
+        await tx.qurbanPackage.findUnique({
+          where: {
+            id: dto.qurbanPackageId,
+          },
+        });
+
+      if (!qurbanPackage) {
+        throw new NotFoundException(
+          'Qurban package not found',
+        );
+      }
+
+      // ---------------------------------------------------
+      // PACKAGE STATUS
+      // ---------------------------------------------------
+
+      if (
+        qurbanPackage.status !==
+        QurbanPackageStatus.ACTIVE
+      ) {
+        throw new ConflictException(
+          'Qurban package is not active',
+        );
+      }
+
+      // ---------------------------------------------------
+      // VALIDATE SHARE COUNT
+      // ---------------------------------------------------
+
+      if (
+        dto.shareCount < 1 ||
+        dto.shareCount >
+          qurbanPackage.shareCount
+      ) {
+        throw new BadRequestException(
+          `Share count must be between 1 and ${qurbanPackage.shareCount}`,
+        );
+      }
+
+      // ---------------------------------------------------
+      // VALIDATE QUANTITY
+      // ---------------------------------------------------
+
+      if (dto.quantity < 1) {
+        throw new BadRequestException(
+          'Quantity must be at least 1',
+        );
+      }
+
+      const available =
+        qurbanPackage.quantityAvailable -
+        qurbanPackage.quantitySold;
+
+      if (dto.quantity > available) {
+        throw new ConflictException(
+          'Insufficient qurban package availability',
+        );
+      }
+
+      // ---------------------------------------------------
+      // SAVING PLAN OPTIONAL
+      // ---------------------------------------------------
+
+      if (dto.savingPlanId) {
+        const saving =
+          await tx.qurbanSavingPlan.findUnique({
+            where: {
+              id: dto.savingPlanId,
+            },
+          });
+
+        if (!saving) {
+          throw new NotFoundException(
+            'Qurban saving plan not found',
+          );
+        }
+
+        if (
+          saving.donorId !==
+          dto.donorId
+        ) {
+          throw new ConflictException(
+            'Saving plan does not belong to this donor',
+          );
+        }
+      }
+
+      // ---------------------------------------------------
+      // PRICE CALCULATION
+      // ---------------------------------------------------
+
+      const unitPrice =
+        new Prisma.Decimal(
+          qurbanPackage.price,
+        );
+
+      const quantity =
+        new Prisma.Decimal(
+          dto.quantity,
+        );
+
+      const shareCount =
+        new Prisma.Decimal(
+          dto.shareCount,
+        );
+
+      /*
+       * Example:
+       *
+       * Package price = Rp4,000,000
+       * Share = 1
+       * Quantity = 1
+       *
+       * Total = Rp4,000,000
+       *
+       * If 2 shares:
+       *
+       * Total = Rp4,000,000 x 2
+       *       = Rp8,000,000
+       */
+
+      const totalAmount =
+        unitPrice
+          .times(quantity)
+          .times(shareCount);
+
+      // ---------------------------------------------------
+      // GENERATE ORDER NUMBER
+      // ---------------------------------------------------
+
+      const year =
+        qurbanPackage.qurbanYear;
+
+      const random =
+        Math.random()
+          .toString(36)
+          .substring(2, 8)
+          .toUpperCase();
+
+      const orderNumber =
+        `QO-${year}-${Date.now()}-${random}`;
+
+      // ---------------------------------------------------
+      // CREATE ORDER
+      // ---------------------------------------------------
+
+      const order =
+        await tx.qurbanOrder.create({
+          data: {
+            orderNumber,
+
+            donorId:
+              donor.id,
+
+            qurbanPackageId:
+              qurbanPackage.id,
+
+            savingPlanId:
+              dto.savingPlanId ??
+              null,
+
+            animalType:
+              qurbanPackage.animalType,
+
+            quantity:
+              dto.quantity,
+
+            shareCount:
+              dto.shareCount,
+
+            unitPrice,
+
+            totalAmount,
+
+            currency:
+              dto.currency
+                ?.trim()
+                .toUpperCase() ||
+              qurbanPackage.currency ||
+              'IDR',
+
+            qurbanYear:
+              qurbanPackage.qurbanYear,
+
+            pekurbanName:
+              dto.pekurbanName.trim(),
+
+            donorName:
+              dto.donorName?.trim() ||
+              donor.fullName,
+
+            donorEmail:
+              dto.donorEmail?.trim() ||
+              donor.email ||
+              null,
+
+            donorPhone:
+              dto.donorPhone?.trim() ||
+              donor.phone ||
+              null,
+
+            distributionLocation:
+              dto.distributionLocation?.trim() ||
+              qurbanPackage.distributionLocation ||
+              null,
+
+            status:
+              'PENDING_PAYMENT',
+
+            notes:
+              dto.notes?.trim() ||
+              null,
+          },
+
+          include: {
+            donor: {
+              select: {
+                id: true,
+                fullName: true,
+                email: true,
+                phone: true,
+              },
+            },
+
+            qurbanPackage: {
+              select: {
+                id: true,
+                name: true,
+                slug: true,
+                animalType: true,
+                shareCount: true,
+                price: true,
+                currency: true,
+                qurbanYear: true,
+                distributionLocation: true,
+              },
+            },
+          },
+        });
+
+      // ---------------------------------------------------
+      // AUDIT LOG
+      // ---------------------------------------------------
+
+      await tx.auditLog.create({
+        data: {
+          action:
+            'QURBAN_ORDER_CREATED',
+
+          entity:
+            'QurbanOrder',
+
+          entityId:
+            order.id,
+
+          userId,
+
+          metadata: {
+            orderNumber:
+              order.orderNumber,
+
+            donorId:
+              order.donorId,
+
+            qurbanPackageId:
+              order.qurbanPackageId,
+
+            savingPlanId:
+              order.savingPlanId,
+
+            animalType:
+              order.animalType,
+
+            quantity:
+              order.quantity,
+
+            shareCount:
+              order.shareCount,
+
+            unitPrice:
+              order.unitPrice.toString(),
+
+            totalAmount:
+              order.totalAmount.toString(),
+
+            currency:
+              order.currency,
+
+            qurbanYear:
+              order.qurbanYear,
+          } as Prisma.InputJsonObject,
+        },
+      });
+
+      return order;
+    },
+  );
+}
+  
   // =========================================================
   // CREATE SAVING PLAN
   // =========================================================
