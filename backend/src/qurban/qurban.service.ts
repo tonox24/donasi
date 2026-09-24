@@ -11,6 +11,8 @@ import {
   QurbanSavingStatus,
   QurbanContributionStatus,
   QurbanPriceStatus,
+  QurbanDistributionStatus,
+  QurbanAnimalStatus,
 } from '@prisma/client';
 
 import { PrismaService } from '../prisma.service';
@@ -24,12 +26,187 @@ import { CreateQurbanPaymentDto } from './dto/create-qurban-payment.dto';
 import { CreateQurbanPriceAdjustmentDto } from './dto/create-qurban-price-adjustment.dto';
 import { CreateQurbanOrderDto } from './dto/create-qurban-order.dto';
 
+import { CreateQurbanDistributionDto } from './dto/create-qurban-distribution.dto';
+import { CreateQurbanDistributionBeneficiaryDto } from './dto/create-qurban-distribution-beneficiary.dto';
+import { UpdateQurbanDistributionStatusDto } from './dto/update-qurban-distribution-status.dto';
 
 @Injectable()
 export class QurbanService {
   constructor(
     private readonly prisma: PrismaService,
-  ) {}
+  )   // =========================================================
+  // CREATE QURBAN DISTRIBUTION
+  // =========================================================
+
+  async createDistribution(
+    dto: CreateQurbanDistributionDto,
+    userId: string,
+  ) {
+    return this.prisma.$transaction(
+      async (tx) => {
+        const order =
+          await tx.qurbanOrder.findUnique({
+            where: {
+              id: dto.qurbanOrderId,
+            },
+            include: {
+              animals: true,
+              donor: {
+                select: {
+                  id: true,
+                  fullName: true,
+                  email: true,
+                  phone: true,
+                },
+              },
+            },
+          });
+
+        if (!order) {
+          throw new NotFoundException(
+            'Qurban order not found',
+          );
+        }
+
+        if (order.animals.length === 0) {
+          throw new ConflictException(
+            'Qurban order does not have any registered animal',
+          );
+        }
+
+        const hasUnprocessedAnimal =
+          order.animals.some(
+            (animal) =>
+              animal.status !==
+                QurbanAnimalStatus.PROCESSED &&
+              animal.status !==
+                QurbanAnimalStatus.DISTRIBUTED,
+          );
+
+        if (hasUnprocessedAnimal) {
+          throw new ConflictException(
+            'All Qurban animals must be PROCESSED before distribution',
+          );
+        }
+
+        const existingDistribution =
+          await tx.qurbanDistribution.findFirst({
+            where: {
+              qurbanOrderId: order.id,
+              status: {
+                not: QurbanDistributionStatus.CANCELLED,
+              },
+            },
+          });
+
+        if (existingDistribution) {
+          throw new ConflictException(
+            'A distribution already exists for this Qurban order',
+          );
+        }
+
+        const now = new Date();
+
+        const random =
+          Math.random()
+            .toString(36)
+            .substring(2, 8)
+            .toUpperCase();
+
+        const distributionNumber =
+          `QD-${order.qurbanYear}-${Date.now()}-${random}`;
+
+        const distribution =
+          await tx.qurbanDistribution.create({
+            data: {
+              distributionNumber,
+
+              qurbanOrderId:
+                order.id,
+
+              location:
+                dto.location.trim(),
+
+              distributionDate:
+                dto.distributionDate
+                  ? new Date(dto.distributionDate)
+                  : null,
+
+              packageQuantity:
+                dto.packageQuantity,
+
+              beneficiaryCount:
+                0,
+
+              status:
+                QurbanDistributionStatus.DRAFT,
+
+              notes:
+                dto.notes?.trim() ||
+                null,
+
+              createdById:
+                userId,
+            },
+
+            include: {
+              qurbanOrder: {
+                select: {
+                  id: true,
+                  orderNumber: true,
+                  pekurbanName: true,
+                  donorName: true,
+                  qurbanYear: true,
+                  animalType: true,
+                },
+              },
+
+              beneficiaries: true,
+            },
+          });
+
+        await tx.auditLog.create({
+          data: {
+            action:
+              'QURBAN_DISTRIBUTION_CREATE',
+
+            entity:
+              'QurbanDistribution',
+
+            entityId:
+              distribution.id,
+
+            userId,
+
+            metadata: {
+              distributionNumber:
+                distribution.distributionNumber,
+
+              qurbanOrderId:
+                order.id,
+
+              orderNumber:
+                order.orderNumber,
+
+              packageQuantity:
+                dto.packageQuantity,
+
+              location:
+                dto.location,
+            } as Prisma.InputJsonObject,
+          },
+        });
+
+        return distribution;
+      },
+      {
+        isolationLevel:
+          Prisma.TransactionIsolationLevel.Serializable,
+      },
+    );
+  }
+  
+  {}
 
   // =========================================================
   // FIND ALL PUBLIC PACKAGES
@@ -2699,3 +2876,592 @@ async markContributionPaid(
     return payment;
   }
 }
+  // =========================================================
+  // FIND ALL DISTRIBUTIONS
+  // =========================================================
+
+  async findAllDistributions() {
+    return this.prisma.qurbanDistribution.findMany({
+      orderBy: {
+        createdAt: 'desc',
+      },
+
+      include: {
+        qurbanOrder: {
+          select: {
+            id: true,
+            orderNumber: true,
+            pekurbanName: true,
+            donorName: true,
+            qurbanYear: true,
+            animalType: true,
+          },
+        },
+
+        beneficiaries: {
+          include: {
+            beneficiary: {
+              select: {
+                id: true,
+                name: true,
+                type: true,
+                location: true,
+              },
+            },
+          },
+        },
+
+        createdBy: {
+          select: {
+            id: true,
+            fullName: true,
+          },
+        },
+      },
+    });
+  }
+  // =========================================================
+  // FIND ONE DISTRIBUTION
+  // =========================================================
+
+  async findOneDistribution(
+    id: string,
+  ) {
+    const distribution =
+      await this.prisma.qurbanDistribution.findUnique({
+        where: {
+          id: id.trim(),
+        },
+
+        include: {
+          qurbanOrder: {
+            include: {
+              donor: {
+                select: {
+                  id: true,
+                  fullName: true,
+                  email: true,
+                  phone: true,
+                },
+              },
+
+              animals: {
+                select: {
+                  id: true,
+                  animalCode: true,
+                  animalType: true,
+                  ageMonths: true,
+                  weightKg: true,
+                  sex: true,
+                  healthStatus: true,
+                  location: true,
+                  status: true,
+                  verifiedAt: true,
+                  slaughteredAt: true,
+                  processedAt: true,
+                  distributedAt: true,
+                },
+              },
+            },
+          },
+
+          beneficiaries: {
+            include: {
+              beneficiary: {
+                select: {
+                  id: true,
+                  name: true,
+                  type: true,
+                  location: true,
+                  description: true,
+                },
+              },
+            },
+
+            orderBy: {
+              createdAt: 'asc',
+            },
+          },
+
+          createdBy: {
+            select: {
+              id: true,
+              fullName: true,
+            },
+          },
+        },
+      });
+
+    if (!distribution) {
+      throw new NotFoundException(
+        'Qurban distribution not found',
+      );
+    }
+
+    return distribution;
+  }
+  // =========================================================
+  // ADD DISTRIBUTION BENEFICIARY
+  // =========================================================
+
+  async addDistributionBeneficiary(
+    distributionId: string,
+    dto: CreateQurbanDistributionBeneficiaryDto,
+    userId: string,
+  ) {
+    return this.prisma.$transaction(
+      async (tx) => {
+        const distribution =
+          await tx.qurbanDistribution.findUnique({
+            where: {
+              id: distributionId.trim(),
+            },
+          });
+
+        if (!distribution) {
+          throw new NotFoundException(
+            'Qurban distribution not found',
+          );
+        }
+
+        if (
+          distribution.status ===
+            QurbanDistributionStatus.DISTRIBUTED ||
+          distribution.status ===
+            QurbanDistributionStatus.CANCELLED
+        ) {
+          throw new ConflictException(
+            'Beneficiary cannot be added to this distribution',
+          );
+        }
+
+        const beneficiary =
+          await tx.beneficiary.findUnique({
+            where: {
+              id: dto.beneficiaryId,
+            },
+          });
+
+        if (!beneficiary) {
+          throw new NotFoundException(
+            'Beneficiary not found',
+          );
+        }
+
+        if (!beneficiary.isActive) {
+          throw new ConflictException(
+            'Beneficiary is not active',
+          );
+        }
+
+        const existing =
+          await tx.qurbanDistributionBeneficiary.findUnique({
+            where: {
+              distributionId_beneficiaryId: {
+                distributionId:
+                  distribution.id,
+
+                beneficiaryId:
+                  beneficiary.id,
+              },
+            },
+          });
+
+        if (existing) {
+          throw new ConflictException(
+            'Beneficiary is already assigned to this distribution',
+          );
+        }
+
+        const currentPackageQuantity =
+          await tx.qurbanDistributionBeneficiary.aggregate({
+            where: {
+              distributionId:
+                distribution.id,
+            },
+
+            _sum: {
+              packageQuantity: true,
+            },
+          });
+
+        const assignedPackages =
+          currentPackageQuantity._sum.packageQuantity ??
+          0;
+
+        const newTotal =
+          assignedPackages +
+          dto.packageQuantity;
+
+        if (
+          newTotal >
+          distribution.packageQuantity
+        ) {
+          throw new ConflictException(
+            `Package quantity exceeds distribution capacity. Available: ${
+              distribution.packageQuantity -
+              assignedPackages
+            }`,
+          );
+        }
+
+        const item =
+          await tx.qurbanDistributionBeneficiary.create({
+            data: {
+              distributionId:
+                distribution.id,
+
+              beneficiaryId:
+                beneficiary.id,
+
+              packageQuantity:
+                dto.packageQuantity,
+
+              receivedAt:
+                dto.receivedAt
+                  ? new Date(dto.receivedAt)
+                  : null,
+
+              notes:
+                dto.notes?.trim() ||
+                null,
+            },
+
+            include: {
+              beneficiary: {
+                select: {
+                  id: true,
+                  name: true,
+                  type: true,
+                  location: true,
+                },
+              },
+            },
+          });
+
+        const beneficiaryCount =
+          await tx.qurbanDistributionBeneficiary.count({
+            where: {
+              distributionId:
+                distribution.id,
+            },
+          });
+
+        await tx.qurbanDistribution.update({
+          where: {
+            id: distribution.id,
+          },
+
+          data: {
+            beneficiaryCount,
+          },
+        });
+
+        await tx.auditLog.create({
+          data: {
+            action:
+              'QURBAN_DISTRIBUTION_BENEFICIARY_ADD',
+
+            entity:
+              'QurbanDistribution',
+
+            entityId:
+              distribution.id,
+
+            userId,
+
+            metadata: {
+              beneficiaryId:
+                beneficiary.id,
+
+              beneficiaryName:
+                beneficiary.name,
+
+              packageQuantity:
+                dto.packageQuantity,
+
+              distributionNumber:
+                distribution.distributionNumber,
+            } as Prisma.InputJsonObject,
+          },
+        });
+
+        return item;
+      },
+      {
+        isolationLevel:
+          Prisma.TransactionIsolationLevel.Serializable,
+      },
+    );
+  }
+  // =========================================================
+  // UPDATE DISTRIBUTION STATUS
+  // =========================================================
+
+  async updateDistributionStatus(
+    distributionId: string,
+    dto: UpdateQurbanDistributionStatusDto,
+    userId: string,
+  ) {
+    return this.prisma.$transaction(
+      async (tx) => {
+        const distribution =
+          await tx.qurbanDistribution.findUnique({
+            where: {
+              id: distributionId.trim(),
+            },
+
+            include: {
+              beneficiaries: true,
+
+              qurbanOrder: {
+                include: {
+                  animals: true,
+                },
+              },
+            },
+          });
+
+        if (!distribution) {
+          throw new NotFoundException(
+            'Qurban distribution not found',
+          );
+        }
+
+        const currentStatus =
+          distribution.status;
+
+        const newStatus =
+          dto.status;
+
+        if (
+          currentStatus ===
+            QurbanDistributionStatus.DISTRIBUTED &&
+          newStatus !==
+            QurbanDistributionStatus.DISTRIBUTED
+        ) {
+          throw new ConflictException(
+            'Distributed status cannot be changed',
+          );
+        }
+
+        if (
+          currentStatus ===
+            QurbanDistributionStatus.CANCELLED
+        ) {
+          throw new ConflictException(
+            'Cancelled distribution cannot be changed',
+          );
+        }
+
+        if (
+          newStatus ===
+          QurbanDistributionStatus.READY
+        ) {
+          if (
+            distribution.packageQuantity <=
+            0
+          ) {
+            throw new ConflictException(
+              'Distribution package quantity must be greater than zero',
+            );
+          }
+
+          if (
+            distribution.beneficiaries.length ===
+            0
+          ) {
+            throw new ConflictException(
+              'At least one beneficiary is required before distribution is READY',
+            );
+          }
+
+          const assignedPackages =
+            distribution.beneficiaries.reduce(
+              (total, item) =>
+                total +
+                item.packageQuantity,
+              0,
+            );
+
+          if (
+            assignedPackages !==
+            distribution.packageQuantity
+          ) {
+            throw new ConflictException(
+              `Beneficiary package quantity must equal distribution package quantity. Assigned: ${assignedPackages}, Required: ${distribution.packageQuantity}`,
+            );
+          }
+        }
+
+        if (
+          newStatus ===
+          QurbanDistributionStatus.DISTRIBUTED
+        ) {
+          if (
+            distribution.beneficiaries.length ===
+            0
+          ) {
+            throw new ConflictException(
+              'At least one beneficiary is required before marking distribution as DISTRIBUTED',
+            );
+          }
+
+          const assignedPackages =
+            distribution.beneficiaries.reduce(
+              (total, item) =>
+                total +
+                item.packageQuantity,
+              0,
+            );
+
+          if (
+            assignedPackages !==
+            distribution.packageQuantity
+          ) {
+            throw new ConflictException(
+              `All distribution packages must be assigned. Assigned: ${assignedPackages}, Required: ${distribution.packageQuantity}`,
+            );
+          }
+
+          const notProcessed =
+            distribution.qurbanOrder.animals.some(
+              (animal) =>
+                animal.status !==
+                QurbanAnimalStatus.PROCESSED,
+            );
+
+          if (notProcessed) {
+            throw new ConflictException(
+              'All animals must be PROCESSED before distribution',
+            );
+          }
+        }
+
+        const now =
+          new Date();
+
+        const updated =
+          await tx.qurbanDistribution.update({
+            where: {
+              id:
+                distribution.id,
+            },
+
+            data: {
+              status:
+                newStatus,
+
+              ...(dto.notes !== undefined && {
+                notes:
+                  dto.notes.trim() ||
+                  null,
+              }),
+            },
+
+            include: {
+              beneficiaries: {
+                include: {
+                  beneficiary: {
+                    select: {
+                      id: true,
+                      name: true,
+                      type: true,
+                      location: true,
+                    },
+                  },
+                },
+              },
+
+              qurbanOrder: {
+                include: {
+                  animals: true,
+                },
+              },
+            },
+          });
+
+        if (
+          newStatus ===
+          QurbanDistributionStatus.DISTRIBUTED
+        ) {
+          await tx.qurbanAnimal.updateMany({
+            where: {
+              qurbanOrderId:
+                distribution.qurbanOrderId,
+
+              status:
+                QurbanAnimalStatus.PROCESSED,
+            },
+
+            data: {
+              status:
+                QurbanAnimalStatus.DISTRIBUTED,
+
+              distributedAt:
+                now,
+            },
+          });
+
+          await tx.qurbanOrder.update({
+            where: {
+              id:
+                distribution.qurbanOrderId,
+            },
+
+            data: {
+              status:
+                'COMPLETED',
+
+              completedAt:
+                now,
+            },
+          });
+        }
+
+        await tx.auditLog.create({
+          data: {
+            action:
+              'QURBAN_DISTRIBUTION_STATUS_CHANGED',
+
+            entity:
+              'QurbanDistribution',
+
+            entityId:
+              distribution.id,
+
+            userId,
+
+            metadata: {
+              distributionNumber:
+                distribution.distributionNumber,
+
+              from:
+                currentStatus,
+
+              to:
+                newStatus,
+
+              qurbanOrderId:
+                distribution.qurbanOrderId,
+
+              qurbanOrderNumber:
+                distribution.qurbanOrder.orderNumber,
+            } as Prisma.InputJsonObject,
+          },
+        });
+
+        return {
+          message:
+            'Qurban distribution status updated successfully',
+
+          distribution:
+            updated,
+        };
+      },
+      {
+        isolationLevel:
+          Prisma.TransactionIsolationLevel.Serializable,
+      },
+    );
+  }
