@@ -1,5 +1,4 @@
 import {
-  BadRequestException,
   ConflictException,
   Injectable,
   NotFoundException,
@@ -262,15 +261,13 @@ export class QurbanAnimalService {
     }
 
     if (
-      [
-        QurbanAnimalStatus.DISTRIBUTED,
-        QurbanAnimalStatus.CANCELLED,
-      ].includes(animal.status)
-    ) {
-      throw new ConflictException(
-        'Distributed or cancelled animal cannot be updated',
-      );
-    }
+        animal.status === QurbanAnimalStatus.DISTRIBUTED ||
+        animal.status === QurbanAnimalStatus.CANCELLED
+      ) {
+        throw new ConflictException(
+          'Distributed or cancelled animal cannot be updated',
+        );
+      }
 
     const updated =
       await this.prisma.qurbanAnimal.update({
@@ -347,43 +344,41 @@ export class QurbanAnimalService {
           );
         }
 
-        const allowedTransitions:
-          Record<
+       const allowedTransitions: Record<
             QurbanAnimalStatus,
             QurbanAnimalStatus[]
           > = {
-            REGISTERED: [
+            [QurbanAnimalStatus.REGISTERED]: [
               QurbanAnimalStatus.VERIFIED,
               QurbanAnimalStatus.CANCELLED,
             ],
-
-            VERIFIED: [
+          
+            [QurbanAnimalStatus.VERIFIED]: [
               QurbanAnimalStatus.SLAUGHTERED,
               QurbanAnimalStatus.CANCELLED,
             ],
-
-            SLAUGHTERED: [
+          
+            [QurbanAnimalStatus.SLAUGHTERED]: [
               QurbanAnimalStatus.PROCESSED,
             ],
-
-            PROCESSED: [
+          
+            [QurbanAnimalStatus.PROCESSED]: [
               QurbanAnimalStatus.DISTRIBUTED,
             ],
-
-            DISTRIBUTED: [],
-
-            CANCELLED: [],
+          
+            [QurbanAnimalStatus.DISTRIBUTED]: [],
+          
+            [QurbanAnimalStatus.CANCELLED]: [],
           };
-
-        if (
-          !allowedTransitions[
-            animal.status
-          ].includes(status)
-        ) {
-          throw new ConflictException(
-            `Invalid animal status transition: ${animal.status} -> ${status}`,
-          );
-        }
+          
+          const allowedNextStatuses: QurbanAnimalStatus[] =
+            allowedTransitions[animal.status];
+          
+          if (!allowedNextStatuses.includes(status)) {
+            throw new ConflictException(
+              `Invalid animal status transition: ${animal.status} -> ${status}`,
+            );
+          }
 
         const now = new Date();
 
