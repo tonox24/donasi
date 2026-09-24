@@ -947,6 +947,210 @@ export class QurbanService {
 
     return updated;
   }
+
+  // =========================================================
+  // LOCK FINAL QURBAN PRICE
+  // =========================================================
+  //
+  // Locks the current final Qurban price so it can no longer
+  // be changed through price adjustment.
+  //
+  // Important:
+  // - Existing contributions remain unchanged.
+  // - Locking the price does NOT create a financial transaction.
+  // - Contributions already created can still be paid.
+  // - Once LOCKED, price adjustment is prohibited.
+  // =========================================================
+
+  async lockPrice(
+    savingId: string,
+    userId: string,
+  ) {
+    return this.prisma.$transaction(
+      async (tx) => {
+        const cleanSavingId =
+          savingId.trim();
+
+        const saving =
+          await tx.qurbanSavingPlan.findUnique({
+            where: {
+              id: cleanSavingId,
+            },
+        });
+
+        if (!saving) {
+          throw new NotFoundException(
+            'Qurban saving plan not found',
+          );
+        }
+
+        // -----------------------------------------------------
+        // TERMINAL VALIDATION
+        // -----------------------------------------------------
+
+        if (
+          (
+            [
+              QurbanSavingStatus.CANCELLED,
+              QurbanSavingStatus.REFUNDED,
+            ] as QurbanSavingStatus[]
+          ).includes(saving.status)
+        ) {
+          throw new ConflictException(
+            'Price cannot be locked for this saving plan',
+          );
+        }
+
+        // -----------------------------------------------------
+        // ALREADY LOCKED
+        // -----------------------------------------------------
+
+        if (
+          saving.priceStatus ===
+          QurbanPriceStatus.LOCKED
+        ) {
+          throw new ConflictException(
+            'Qurban price is already locked',
+          );
+        }
+
+        // -----------------------------------------------------
+        // FINAL PRICE REQUIRED
+        // -----------------------------------------------------
+
+        if (!saving.finalAmount) {
+          throw new ConflictException(
+            'Final Qurban price must be established before it can be locked',
+          );
+        }
+
+        if (
+          saving.finalAmount.lessThanOrEqualTo(0)
+        ) {
+          throw new BadRequestException(
+            'Final Qurban price must be greater than zero',
+          );
+        }
+
+        // -----------------------------------------------------
+        // LOCK TIMESTAMP
+        // -----------------------------------------------------
+
+        const lockedAt =
+          new Date();
+
+        // -----------------------------------------------------
+        // UPDATE SAVING
+        // -----------------------------------------------------
+
+        const updatedSaving =
+          await tx.qurbanSavingPlan.update({
+            where: {
+              id: saving.id,
+            },
+
+            data: {
+              priceStatus:
+                QurbanPriceStatus.LOCKED,
+
+              priceLockedAt:
+                lockedAt,
+            },
+
+            include: {
+              donor: {
+                select: {
+                  id: true,
+                  fullName: true,
+                  email: true,
+                  phone: true,
+                },
+              },
+            },
+          });
+
+        // -----------------------------------------------------
+        // AUDIT LOG
+        // -----------------------------------------------------
+
+        await tx.auditLog.create({
+          data: {
+            action:
+              'QURBAN_SAVING_PRICE_LOCKED',
+
+            entity:
+              'QurbanSavingPlan',
+
+            entityId:
+              saving.id,
+
+            userId,
+
+            metadata: {
+              savingNumber:
+                saving.savingNumber,
+
+              finalAmount:
+                saving.finalAmount.toString(),
+
+              currentAmount:
+                saving.currentAmount.toString(),
+
+              remainingAmount:
+                saving.remainingAmount.toString(),
+
+              shortfallAmount:
+                saving.shortfallAmount.toString(),
+
+              excessAmount:
+                saving.excessAmount.toString(),
+
+              previousPriceStatus:
+                saving.priceStatus,
+
+              newPriceStatus:
+                QurbanPriceStatus.LOCKED,
+
+              priceLockedAt:
+                lockedAt.toISOString(),
+            } as Prisma.InputJsonObject,
+          },
+        });
+
+        return {
+          message:
+            'Qurban price locked successfully',
+
+          saving:
+            updatedSaving,
+
+          settlement: {
+            finalPrice:
+              saving.finalAmount.toString(),
+
+            currentAmount:
+              saving.currentAmount.toString(),
+
+            remainingAmount:
+              saving.remainingAmount.toString(),
+
+            shortfallAmount:
+              saving.shortfallAmount.toString(),
+
+            excessAmount:
+              saving.excessAmount.toString(),
+
+            priceStatus:
+              QurbanPriceStatus.LOCKED,
+
+            priceLockedAt:
+              lockedAt.toISOString(),
+          },
+        };
+      },
+    );
+  }
+  
   // =========================================================
   // SAVING PROGRESS
   // =========================================================
