@@ -27,11 +27,110 @@ import { CreateQurbanPaymentDto } from './dto/create-qurban-payment.dto';
 import { CreateQurbanPriceAdjustmentDto } from './dto/create-qurban-price-adjustment.dto';
 import { CreateQurbanOrderDto } from './dto/create-qurban-order.dto';
 
+import { CreateQurbanDistributionDto } from './dto/create-qurban-distribution.dto';
+import { CreateQurbanDistributionBeneficiaryDto } from './dto/create-qurban-distribution-beneficiary.dto';
+import { UpdateQurbanDistributionStatusDto } from './dto/update-qurban-distribution-status.dto';
+
 @Controller('qurban')
 export class QurbanController {
   constructor(
     private readonly qurbanService: QurbanService,
-  ) {}
+  ) 
+    // =========================================================
+  // QURBAN DISTRIBUTION - CREATE
+  // =========================================================
+
+  @UseGuards(
+    JwtAuthGuard,
+    PermissionsGuard,
+  )
+  @Permissions('qurban.manage')
+  @Post('distributions')
+  createDistribution(
+    @Body() dto: CreateQurbanDistributionDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.qurbanService.createDistribution(
+      dto,
+      user.id,
+    );
+  }
+
+  // =========================================================
+  // QURBAN DISTRIBUTION - LIST
+  // =========================================================
+
+  @UseGuards(
+    JwtAuthGuard,
+    PermissionsGuard,
+  )
+  @Permissions('qurban.view')
+  @Get('distributions')
+  findAllDistributions() {
+    return this.qurbanService.findAllDistributions();
+  }
+
+  // =========================================================
+  // QURBAN DISTRIBUTION - DETAIL
+  // =========================================================
+
+  @UseGuards(
+    JwtAuthGuard,
+    PermissionsGuard,
+  )
+  @Permissions('qurban.view')
+  @Get('distributions/:id')
+  findOneDistribution(
+    @Param('id') id: string,
+  ) {
+    return this.qurbanService.findOneDistribution(id);
+  }
+
+  // =========================================================
+  // ADD BENEFICIARY
+  // =========================================================
+
+  @UseGuards(
+    JwtAuthGuard,
+    PermissionsGuard,
+  )
+  @Permissions('qurban.manage')
+  @Post('distributions/:id/beneficiaries')
+  addDistributionBeneficiary(
+    @Param('id') id: string,
+    @Body() dto: CreateQurbanDistributionBeneficiaryDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.qurbanService.addDistributionBeneficiary(
+      id,
+      dto,
+      user.id,
+    );
+  }
+
+  // =========================================================
+  // DISTRIBUTION STATUS
+  // =========================================================
+
+  @UseGuards(
+    JwtAuthGuard,
+    PermissionsGuard,
+  )
+  @Permissions('qurban.manage')
+  @Post('distributions/:id/status')
+  updateDistributionStatus(
+    @Param('id') id: string,
+    @Body() dto: UpdateQurbanDistributionStatusDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.qurbanService.updateDistributionStatus(
+      id,
+      dto,
+      user.id,
+    );
+  }
+  
+  {}
 
   // =========================================================
   // PUBLIC - QURBAN PACKAGES
