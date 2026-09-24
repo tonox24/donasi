@@ -25,6 +25,7 @@ import { UpdateQurbanSavingDto } from './dto/update-qurban-saving.dto';
 import { CreateQurbanContributionDto } from './dto/create-qurban-contribution.dto';
 import { CreateQurbanPaymentDto } from './dto/create-qurban-payment.dto';
 import { CreateQurbanPriceAdjustmentDto } from './dto/create-qurban-price-adjustment.dto';
+import { CreateQurbanOrderDto } from './dto/create-qurban-order.dto';
 
 @Controller('qurban')
 export class QurbanController {
