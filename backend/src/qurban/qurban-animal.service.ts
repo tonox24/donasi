@@ -221,14 +221,12 @@ export class QurbanAnimalService {
               status: true,
             },
           },
-
+        
           documentations: {
             orderBy: {
               createdAt: 'desc',
             },
           },
-
-          distributions: false,
         },
       });
 
