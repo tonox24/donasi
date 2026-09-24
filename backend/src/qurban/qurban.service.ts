@@ -34,7 +34,9 @@ import { UpdateQurbanDistributionStatusDto } from './dto/update-qurban-distribut
 export class QurbanService {
   constructor(
     private readonly prisma: PrismaService,
-  )   // =========================================================
+  ) {}
+  
+  // =========================================================
   // CREATE QURBAN DISTRIBUTION
   // =========================================================
 
@@ -206,8 +208,6 @@ export class QurbanService {
     );
   }
   
-  {}
-
   // =========================================================
   // FIND ALL PUBLIC PACKAGES
   // =========================================================
@@ -2875,7 +2875,7 @@ async markContributionPaid(
 
     return payment;
   }
-}
+  
   // =========================================================
   // FIND ALL DISTRIBUTIONS
   // =========================================================
