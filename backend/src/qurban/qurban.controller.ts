@@ -215,6 +215,26 @@ export class QurbanController {
   }
 
   // =========================================================
+  // QURBAN PRICE LOCK
+  // =========================================================
+
+  @UseGuards(
+    JwtAuthGuard,
+    PermissionsGuard,
+  )
+  @Permissions('qurban.manage')
+  @Post('savings/:id/price-lock')
+  lockPrice(
+    @Param('id') id: string,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.qurbanService.lockPrice(
+      id,
+      user.id,
+    );
+  }
+  
+  // =========================================================
   // SAVING PROGRESS
   // =========================================================
 
