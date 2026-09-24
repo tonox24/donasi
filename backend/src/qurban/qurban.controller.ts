@@ -110,6 +110,27 @@ export class QurbanController {
     );
   }
 
+// =========================================================
+// QURBAN ORDER - CREATE
+// =========================================================
+
+@UseGuards(
+  JwtAuthGuard,
+  PermissionsGuard,
+)
+@Permissions('qurban.manage')
+@Post('orders')
+createOrder(
+  @Body() dto: CreateQurbanOrderDto,
+  @CurrentUser() user: { id: string },
+) {
+  return this.qurbanService.createOrder(
+    dto,
+    user.id,
+  );
+}
+  
+
   // =========================================================
   // TABUNGAN QURBAN - CREATE
   // =========================================================
