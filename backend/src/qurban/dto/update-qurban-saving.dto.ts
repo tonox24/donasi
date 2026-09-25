@@ -26,10 +26,15 @@ export class UpdateQurbanSavingDto {
 
   @IsOptional()
   @IsNumber()
+  @Min(1)
+  contributionAmount?: number;
+
+  @IsOptional()
+  @IsNumber()
   @Min(0)
   @Max(100)
   bufferPercentage?: number;
-  
+
   @IsOptional()
   @IsEnum(QurbanSavingFrequency)
   frequency?: QurbanSavingFrequency;
