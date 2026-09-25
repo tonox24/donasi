@@ -2875,6 +2875,636 @@ async markContributionPaid(
 
     return payment;
   }
+
+  // =========================================================
+  // QURBAN IMPACT REPORT
+  // =========================================================
+
+  async getQurbanReport(
+    orderId: string,
+  ) {
+    const id = orderId.trim();
+
+    if (!id) {
+      throw new BadRequestException(
+        'Qurban order ID is required',
+      );
+    }
+
+    const order =
+      await this.prisma.qurbanOrder.findUnique({
+        where: {
+          id,
+        },
+
+        include: {
+          donor: {
+            select: {
+              id: true,
+              fullName: true,
+              email: true,
+              phone: true,
+            },
+          },
+
+          qurbanPackage: {
+            select: {
+              id: true,
+              packageCode: true,
+              name: true,
+              animalType: true,
+              price: true,
+              currency: true,
+              qurbanYear: true,
+            },
+          },
+
+          savingPlan: {
+            select: {
+              id: true,
+              savingNumber: true,
+              qurbanAnimalType: true,
+              estimatedAmount: true,
+              recommendedTargetAmount: true,
+              targetAmount: true,
+              finalAmount: true,
+              currentAmount: true,
+              remainingAmount: true,
+              shortfallAmount: true,
+              excessAmount: true,
+              bufferPercentage: true,
+              priceStatus: true,
+              status: true,
+              startDate: true,
+              targetDate: true,
+            },
+          },
+
+          animals: {
+            orderBy: {
+              createdAt: 'asc',
+            },
+
+            include: {
+              documentations: {
+                orderBy: {
+                  createdAt: 'asc',
+                },
+
+                include: {
+                  createdBy: {
+                    select: {
+                      id: true,
+                      fullName: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+
+          documentations: {
+            orderBy: {
+              createdAt: 'asc',
+            },
+
+            include: {
+              createdBy: {
+                select: {
+                  id: true,
+                  fullName: true,
+                },
+              },
+
+              qurbanAnimal: {
+                select: {
+                  id: true,
+                  animalCode: true,
+                  animalType: true,
+                  status: true,
+                },
+              },
+            },
+          },
+
+          distributions: {
+            orderBy: {
+              createdAt: 'asc',
+            },
+
+            include: {
+              beneficiaries: {
+                orderBy: {
+                  createdAt: 'asc',
+                },
+
+                include: {
+                  beneficiary: {
+                    select: {
+                      id: true,
+                      name: true,
+                      type: true,
+                      description: true,
+                      location: true,
+                      isActive: true,
+                    },
+                  },
+                },
+              },
+
+              createdBy: {
+                select: {
+                  id: true,
+                  fullName: true,
+                },
+              },
+            },
+          },
+        },
+      });
+
+    if (!order) {
+      throw new NotFoundException(
+        'Qurban order not found',
+      );
+    }
+
+    /*
+     * ---------------------------------------------------------
+     * BUILD DOCUMENTATION TIMELINE
+     * ---------------------------------------------------------
+     */
+
+    const documentationMap = new Map<
+      string,
+      any
+    >();
+
+    for (
+      const documentation of
+        order.documentations
+    ) {
+      documentationMap.set(
+        documentation.id,
+        documentation,
+      );
+    }
+
+    for (
+      const animal of order.animals
+    ) {
+      for (
+        const documentation of
+          animal.documentations
+      ) {
+        documentationMap.set(
+          documentation.id,
+          documentation,
+        );
+      }
+    }
+
+    const documentationTimeline =
+      Array.from(
+        documentationMap.values(),
+      )
+        .sort((a, b) => {
+          const dateA =
+            new Date(
+              a.takenAt ??
+                a.createdAt,
+            ).getTime();
+
+          const dateB =
+            new Date(
+              b.takenAt ??
+                b.createdAt,
+            ).getTime();
+
+          return dateA - dateB;
+        })
+        .map(
+          (
+            documentation,
+          ) => ({
+            id:
+              documentation.id,
+
+            type:
+              documentation.type,
+
+            title:
+              documentation.title,
+
+            caption:
+              documentation.caption,
+
+            fileUrl:
+              documentation.fileUrl,
+
+            takenAt:
+              documentation.takenAt,
+
+            createdAt:
+              documentation.createdAt,
+
+            animal:
+              documentation.qurbanAnimal
+                ? {
+                    id:
+                      documentation
+                        .qurbanAnimal.id,
+
+                    animalCode:
+                      documentation
+                        .qurbanAnimal
+                        .animalCode,
+
+                    animalType:
+                      documentation
+                        .qurbanAnimal
+                        .animalType,
+
+                    status:
+                      documentation
+                        .qurbanAnimal
+                        .status,
+                  }
+                : null,
+
+            createdBy:
+              documentation.createdBy
+                ? {
+                    id:
+                      documentation
+                        .createdBy.id,
+
+                    fullName:
+                      documentation
+                        .createdBy
+                        .fullName,
+                  }
+                : null,
+          }),
+        );
+
+    /*
+     * ---------------------------------------------------------
+     * BUILD BENEFICIARY SUMMARY
+     * ---------------------------------------------------------
+     */
+
+    const beneficiaries =
+      order.distributions.flatMap(
+        (distribution) =>
+          distribution.beneficiaries.map(
+            (item) => ({
+              id:
+                item.id,
+
+              distributionId:
+                distribution.id,
+
+              distributionNumber:
+                distribution
+                  .distributionNumber,
+
+              beneficiaryId:
+                item.beneficiaryId,
+
+              name:
+                item.beneficiary.name,
+
+              type:
+                item.beneficiary.type,
+
+              description:
+                item.beneficiary
+                  .description,
+
+              location:
+                item.beneficiary
+                  .location,
+
+              packageQuantity:
+                item.packageQuantity,
+
+              receivedAt:
+                item.receivedAt,
+
+              notes:
+                item.notes,
+            }),
+          ),
+      );
+
+    /*
+     * ---------------------------------------------------------
+     * IMPACT SUMMARY
+     * ---------------------------------------------------------
+     */
+
+    const totalAnimals =
+      order.animals.length;
+
+    const distributedAnimals =
+      order.animals.filter(
+        (animal) =>
+          animal.status ===
+          QurbanAnimalStatus.DISTRIBUTED,
+      ).length;
+
+    const totalPackages =
+      order.distributions.reduce(
+        (total, distribution) =>
+          total +
+          distribution.packageQuantity,
+        0,
+      );
+
+    const totalBeneficiaryGroups =
+      beneficiaries.length;
+
+    const totalDistributedPackages =
+      beneficiaries.reduce(
+        (total, beneficiary) =>
+          total +
+          beneficiary.packageQuantity,
+        0,
+      );
+
+    const completedDistributions =
+      order.distributions.filter(
+        (distribution) =>
+          distribution.status ===
+          QurbanDistributionStatus.DISTRIBUTED,
+      ).length;
+
+    /*
+     * ---------------------------------------------------------
+     * RETURN REPORT
+     * ---------------------------------------------------------
+     */
+
+    return {
+      reportType:
+        'QURBAN_IMPACT_REPORT',
+
+      generatedAt:
+        new Date(),
+
+      qurban: {
+        orderId:
+          order.id,
+
+        orderNumber:
+          order.orderNumber,
+
+        qurbanYear:
+          order.qurbanYear,
+
+        pekurbanName:
+          order.pekurbanName,
+
+        donorName:
+          order.donorName,
+
+        donorEmail:
+          order.donorEmail,
+
+        donorPhone:
+          order.donorPhone,
+
+        animalType:
+          order.animalType,
+
+        quantity:
+          order.quantity,
+
+        shareCount:
+          order.shareCount,
+
+        unitPrice:
+          order.unitPrice,
+
+        totalAmount:
+          order.totalAmount,
+
+        currency:
+          order.currency,
+
+        status:
+          order.status,
+
+        distributionLocation:
+          order.distributionLocation,
+
+        confirmedAt:
+          order.confirmedAt,
+
+        completedAt:
+          order.completedAt,
+
+        certificateNumber:
+          order.certificateNumber,
+
+        certificateUrl:
+          order.certificateUrl,
+      },
+
+      donor:
+        order.donor,
+
+      package:
+        order.qurbanPackage,
+
+      savingPlan:
+        order.savingPlan,
+
+      animals:
+        order.animals.map(
+          (animal) => ({
+            id:
+              animal.id,
+
+            animalCode:
+              animal.animalCode,
+
+            animalType:
+              animal.animalType,
+
+            ageMonths:
+              animal.ageMonths,
+
+            weightKg:
+              animal.weightKg,
+
+            sex:
+              animal.sex,
+
+            healthStatus:
+              animal.healthStatus,
+
+            location:
+              animal.location,
+
+            status:
+              animal.status,
+
+            verifiedAt:
+              animal.verifiedAt,
+
+            slaughteredAt:
+              animal.slaughteredAt,
+
+            processedAt:
+              animal.processedAt,
+
+            distributedAt:
+              animal.distributedAt,
+
+            notes:
+              animal.notes,
+
+            documentation:
+              animal.documentations.map(
+                (
+                  documentation,
+                ) => ({
+                  id:
+                    documentation.id,
+
+                  type:
+                    documentation.type,
+
+                  fileUrl:
+                    documentation.fileUrl,
+
+                  title:
+                    documentation.title,
+
+                  caption:
+                    documentation.caption,
+
+                  takenAt:
+                    documentation.takenAt,
+
+                  createdAt:
+                    documentation.createdAt,
+
+                  createdBy:
+                    documentation
+                      .createdBy,
+                }),
+              ),
+          }),
+        ),
+
+      documentation:
+        documentationTimeline,
+
+      distributions:
+        order.distributions.map(
+          (distribution) => ({
+            id:
+              distribution.id,
+
+            distributionNumber:
+              distribution
+                .distributionNumber,
+
+            location:
+              distribution.location,
+
+            distributionDate:
+              distribution
+                .distributionDate,
+
+            packageQuantity:
+              distribution
+                .packageQuantity,
+
+            beneficiaryCount:
+              distribution
+                .beneficiaryCount,
+
+            status:
+              distribution.status,
+
+            notes:
+              distribution.notes,
+
+            createdAt:
+              distribution.createdAt,
+
+            createdBy:
+              distribution.createdBy,
+
+            beneficiaries:
+              distribution
+                .beneficiaries
+                .map(
+                  (item) => ({
+                    id:
+                      item.id,
+
+                    beneficiaryId:
+                      item.beneficiaryId,
+
+                    name:
+                      item.beneficiary
+                        .name,
+
+                    type:
+                      item.beneficiary
+                        .type,
+
+                    location:
+                      item.beneficiary
+                        .location,
+
+                    packageQuantity:
+                      item.packageQuantity,
+
+                    receivedAt:
+                      item.receivedAt,
+
+                    notes:
+                      item.notes,
+                  }),
+                ),
+          }),
+        ),
+
+      impact: {
+        totalAnimals,
+
+        distributedAnimals,
+
+        totalPackages,
+
+        totalBeneficiaryGroups,
+
+        totalDistributedPackages,
+
+        completedDistributions,
+
+        distributionLocations:
+          [
+            ...new Set(
+              order.distributions.map(
+                (distribution) =>
+                  distribution.location,
+              ),
+            ),
+          ],
+
+        documentationCount:
+          documentationTimeline.length,
+      },
+    };
+  }
+  
   
   // =========================================================
   // FIND ALL DISTRIBUTIONS
