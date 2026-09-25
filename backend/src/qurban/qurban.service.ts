@@ -1022,9 +1022,35 @@ async createOrder(
       );
     }
 
+    // ---------------------------------------------------------
+    // INITIAL QURBAN PRICE
+    // ---------------------------------------------------------
+
     const targetAmount =
       new Prisma.Decimal(
         dto.targetAmount,
+      );
+
+    if (targetAmount.lessThanOrEqualTo(0)) {
+      throw new BadRequestException(
+        'Target amount must be greater than zero',
+      );
+    }
+
+    // Buffer is a planning reserve only.
+    // It does not change the historical target price.
+    const bufferPercentage =
+      dto.bufferPercentage !== undefined
+        ? new Prisma.Decimal(
+            dto.bufferPercentage,
+          )
+        : new Prisma.Decimal(0);
+
+    const recommendedTargetAmount =
+      targetAmount.plus(
+        targetAmount
+          .times(bufferPercentage)
+          .dividedBy(100),
       );
 
     const contributionAmount =
@@ -1074,7 +1100,7 @@ async createOrder(
             targetAmount,
 
           recommendedTargetAmount:
-            targetAmount,
+            recommendedTargetAmount,
 
           finalAmount:
             null,
@@ -1092,7 +1118,7 @@ async createOrder(
             new Prisma.Decimal(0),
 
           bufferPercentage:
-            null,
+            bufferPercentage,
 
           priceStatus:
             QurbanPriceStatus.ESTIMATED,
@@ -1174,6 +1200,19 @@ async createOrder(
           recommendedTargetAmount:
             saving.recommendedTargetAmount?.toString() ??
             null,
+
+          bufferPercentage:
+            saving.bufferPercentage?.toString() ??
+            null,
+
+          currentAmount:
+            saving.currentAmount.toString(),
+
+          remainingAmount:
+            saving.remainingAmount.toString(),
+
+          shortfallAmount:
+            saving.shortfallAmount.toString(),
 
           priceStatus:
             saving.priceStatus,
@@ -1327,6 +1366,18 @@ async createOrder(
     const currentAmount =
       saving.currentAmount;
 
+    const bufferPercentage =
+      dto.bufferPercentage !== undefined
+        ? new Prisma.Decimal(
+            dto.bufferPercentage,
+          )
+        : (
+            saving.bufferPercentage ??
+            new Prisma.Decimal(0)
+          );
+
+    // Target amount may only be changed before any contribution
+    // or final price has been established.
     if (
       targetAmount.lessThan(
         currentAmount,
@@ -1336,6 +1387,28 @@ async createOrder(
         'Target amount cannot be lower than current amount',
       );
     }
+
+    // Buffer is a planning value. Once the final Qurban price
+    // has been established, price changes must use the dedicated
+    // price-adjustment endpoint so that the history is preserved.
+    if (
+      dto.bufferPercentage !== undefined &&
+      (
+        saving.finalAmount !== null ||
+        saving.priceStatus === QurbanPriceStatus.LOCKED
+      )
+    ) {
+      throw new ConflictException(
+        'Buffer percentage cannot be changed after the final Qurban price has been established or locked',
+      );
+    }
+
+    const recommendedTargetAmount =
+      targetAmount.plus(
+        targetAmount
+          .times(bufferPercentage)
+          .dividedBy(100),
+      );
 
     let startDate =
       saving.startDate;
@@ -1360,9 +1433,13 @@ async createOrder(
     }
 
     const remainingAmount =
-      targetAmount.minus(
+      targetAmount.greaterThan(
         currentAmount,
-      );
+      )
+        ? targetAmount.minus(
+            currentAmount,
+          )
+        : new Prisma.Decimal(0);
 
     const updated =
       await this.prisma.qurbanSavingPlan.update({
@@ -1384,11 +1461,19 @@ async createOrder(
                 : saving.estimatedAmount,
             recommendedTargetAmount:
               saving.finalAmount === null
-                ? targetAmount
+                ? recommendedTargetAmount
                 : saving.recommendedTargetAmount,
             remainingAmount,
             shortfallAmount: remainingAmount,
             excessAmount: new Prisma.Decimal(0),
+          }),
+
+          ...(dto.bufferPercentage !== undefined && {
+            bufferPercentage,
+            recommendedTargetAmount:
+              saving.finalAmount === null
+                ? recommendedTargetAmount
+                : saving.recommendedTargetAmount,
           }),
 
           ...(dto.contributionAmount !== undefined && {
@@ -1456,6 +1541,41 @@ async createOrder(
             JSON.parse(
               JSON.stringify(dto),
             ),
+
+          pricing: {
+            targetAmount:
+              updated.targetAmount.toString(),
+
+            estimatedAmount:
+              updated.estimatedAmount.toString(),
+
+            recommendedTargetAmount:
+              updated.recommendedTargetAmount?.toString() ??
+              null,
+
+            bufferPercentage:
+              updated.bufferPercentage?.toString() ??
+              null,
+
+            currentAmount:
+              updated.currentAmount.toString(),
+
+            remainingAmount:
+              updated.remainingAmount.toString(),
+
+            shortfallAmount:
+              updated.shortfallAmount.toString(),
+
+            excessAmount:
+              updated.excessAmount.toString(),
+
+            finalAmount:
+              updated.finalAmount?.toString() ??
+              null,
+
+            priceStatus:
+              updated.priceStatus,
+          },
         },
       },
     });
