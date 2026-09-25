@@ -2908,16 +2908,16 @@ async markContributionPaid(
           },
 
           qurbanPackage: {
-            select: {
-              id: true,
-              packageCode: true,
-              name: true,
-              animalType: true,
-              price: true,
-              currency: true,
-              qurbanYear: true,
+              select: {
+                id: true,
+                name: true,
+                slug: true,
+                animalType: true,
+                price: true,
+                currency: true,
+                qurbanYear: true,
+              },
             },
-          },
 
           savingPlan: {
             select: {
