@@ -4,6 +4,7 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  Max,
   Min,
 } from 'class-validator';
 
@@ -25,9 +26,10 @@ export class UpdateQurbanSavingDto {
 
   @IsOptional()
   @IsNumber()
-  @Min(1)
-  contributionAmount?: number;
-
+  @Min(0)
+  @Max(100)
+  bufferPercentage?: number;
+  
   @IsOptional()
   @IsEnum(QurbanSavingFrequency)
   frequency?: QurbanSavingFrequency;
