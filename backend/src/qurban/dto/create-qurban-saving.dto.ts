@@ -5,6 +5,7 @@ import {
   IsOptional,
   IsString,
   IsUUID,
+  Max,
   Min,
 } from 'class-validator';
 
@@ -28,6 +29,12 @@ export class CreateQurbanSavingDto {
   @IsNumber()
   @Min(1)
   contributionAmount?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  bufferPercentage?: number;
 
   @IsEnum(QurbanSavingFrequency)
   frequency!: QurbanSavingFrequency;
