@@ -127,6 +127,22 @@ export class QurbanController {
     );
   }
 
+    // =========================================================
+  // QURBAN IMPACT REPORT
+  // =========================================================
+
+  @UseGuards(
+    JwtAuthGuard,
+    PermissionsGuard,
+  )
+  @Permissions('qurban.view')
+  @Get('orders/:id/report')
+  getQurbanReport(
+    @Param('id') id: string,
+  ) {
+    return this.qurbanService.getQurbanReport(id);
+  }
+
   // =========================================================
   // TABUNGAN QURBAN - CREATE
   // =========================================================
