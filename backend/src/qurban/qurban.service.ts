@@ -2090,18 +2090,26 @@ async markContributionPaid(
       // -----------------------------------------------------
 
       const contribution =
-        await tx.qurbanSavingContribution.findFirst({
-          where: {
-            id: cleanContributionId,
-            savingPlanId: cleanSavingId,
-          },
-        });
-
-      if (!contribution) {
-        throw new NotFoundException(
-          'Qurban saving contribution not found',
-        );
-      }
+          await tx.qurbanSavingContribution.findUnique({
+            where: {
+              id: cleanContributionId,
+            },
+          });
+        
+        if (!contribution) {
+          throw new NotFoundException(
+            `Qurban saving contribution not found: ${cleanContributionId}`,
+          );
+        }
+        
+        if (
+          contribution.savingPlanId !==
+          cleanSavingId
+        ) {
+          throw new ConflictException(
+            `Contribution ${cleanContributionId} does not belong to saving plan ${cleanSavingId}`,
+          );
+        }
 
       // -----------------------------------------------------
       // CONTRIBUTION STATUS VALIDATION
