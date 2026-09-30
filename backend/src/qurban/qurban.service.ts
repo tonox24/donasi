@@ -2086,9 +2086,10 @@ async markContributionPaid(
     // Read first, outside the transaction, so a persisted contribution
     // is resolved exactly like the GET contributions endpoint.
     const contribution =
-      await this.prisma.qurbanSavingContribution.findUnique({
+      await this.prisma.qurbanSavingContribution.findFirst({
         where: {
           id: cleanContributionId,
+          savingPlanId: cleanSavingId,
         },
       });
 
@@ -2145,9 +2146,10 @@ async markContributionPaid(
 
         // Re-read inside the transaction for concurrency protection.
         const txContribution =
-          await tx.qurbanSavingContribution.findUnique({
+          await tx.qurbanSavingContribution.findFirst({
             where: {
               id: cleanContributionId,
+              savingPlanId: cleanSavingId,
             },
           });
 
