@@ -205,82 +205,85 @@ export class QurbanAnimalService {
   // ==========================================
 
   async update(
-    id: string,
-    dto: UpdateQurbanAnimalDto,
+  id: string,
+  dto: UpdateQurbanAnimalDto,
+) {
+  const animal =
+    await this.prisma.qurbanAnimal.findUnique({
+      where: {
+        id,
+      },
+    });
+
+  if (!animal) {
+    throw new NotFoundException(
+      'Qurban animal not found',
+    );
+  }
+
+  const lockedStatuses = [
+    QurbanAnimalStatus.SLAUGHTERED,
+    QurbanAnimalStatus.PROCESSED,
+    QurbanAnimalStatus.DISTRIBUTED,
+  ];
+
+  if (
+    lockedStatuses.includes(animal.status)
   ) {
-    const animal =
-      await this.prisma.qurbanAnimal.findUnique({
-        where: {
-          id,
-        },
-      });
+    throw new BadRequestException(
+      'Animal can no longer be edited at this stage',
+    );
+  }
 
-    if (!animal) {
-      throw new NotFoundException(
-        'Qurban animal not found',
-      );
-    }
+  const updated =
+    await this.prisma.qurbanAnimal.update({
+      where: {
+        id,
+      },
 
-    // Jangan izinkan edit data setelah
-    // hewan masuk tahap proses akhir.
-    const lockedStatuses = [
-      QurbanAnimalStatus.SLAUGHTERED,
-      QurbanAnimalStatus.PROCESSED,
-      QurbanAnimalStatus.DISTRIBUTED,
-    ];
+      data: {
+        qurbanOrderId:
+          dto.qurbanOrderId,
 
-    if (
-      lockedStatuses.includes(
-        animal.status,
-      )
-    ) {
-      throw new BadRequestException(
-        'Animal can no longer be edited at this stage',
-      );
-    }
+        animalType:
+          dto.animalType,
 
-    const updated =
-      await this.prisma.qurbanAnimal.update({
-        where: {
-          id,
-        },
+        breed:
+          dto.breed,
 
-        data: {
-          qurbanOrderId:
-            dto.qurbanOrderId,
+        gender:
+          dto.gender,
 
-          animalType:
-            dto.animalType,
+        ageMonths:
+          dto.ageMonths,
 
-          breed:
-            dto.breed,
+        weight:
+          dto.weight,
 
-          gender:
-            dto.gender,
+        origin:
+          dto.origin,
 
-          ageMonths:
-            dto.ageMonths,
+        supplier:
+          dto.supplier,
 
-          weight:
-            dto.weight,
+        purchasePrice:
+          dto.purchasePrice,
 
-          origin:
-            dto.origin,
+        distributionLocation:
+          dto.distributionLocation,
 
-          supplier:
-            dto.supplier,
+        notes:
+          dto.notes,
+      },
+    });
 
-          purchasePrice:
-            dto.purchasePrice,
-
-          distributionLocation:
-            dto.distributionLocation,
-
-          notes:
-            dto.notes,
-        },
-      });
-
+  return {
+    success: true,
+    message:
+      'Qurban animal updated successfully',
+    data: updated,
+  };
+}
     return {
       success: true,
       message:
