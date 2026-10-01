@@ -227,7 +227,6 @@ export class QurbanAnimalService {
       QurbanAnimalStatus.SLAUGHTERED,
       QurbanAnimalStatus.PROCESSED,
       QurbanAnimalStatus.DISTRIBUTED,
-      QurbanAnimalStatus.COMPLETED,
     ];
 
     if (
