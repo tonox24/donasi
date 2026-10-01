@@ -18,6 +18,8 @@ import { ReceiptModule } from './receipt/receipt.module';
 import { DonorModule } from './donor/donor.module';
 import { FinanceModule } from './finance/finance.module';
 import { QurbanModule } from './qurban/qurban.module';
+import { QurbanAnimalModule } from './qurban-animal/qurban-animal.module';
+
 
 @Module({
   imports: [
@@ -52,6 +54,8 @@ import { QurbanModule } from './qurban/qurban.module';
     FinanceModule,
 
     QurbanModule,
+    QurbanAnimalModule,
+
   ],
 
   controllers: [
