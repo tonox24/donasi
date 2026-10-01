@@ -2086,10 +2086,9 @@ async markContributionPaid(
     // Read first, outside the transaction, so a persisted contribution
     // is resolved exactly like the GET contributions endpoint.
     const contribution =
-      await this.prisma.qurbanSavingContribution.findFirst({
+      await this.prisma.qurbanSavingContribution.findUnique({
         where: {
           id: cleanContributionId,
-          savingPlanId: cleanSavingId,
         },
       });
 
@@ -2146,10 +2145,9 @@ async markContributionPaid(
 
         // Re-read inside the transaction for concurrency protection.
         const txContribution =
-          await tx.qurbanSavingContribution.findFirst({
+          await tx.qurbanSavingContribution.findUnique({
             where: {
               id: cleanContributionId,
-              savingPlanId: cleanSavingId,
             },
           });
 
@@ -2682,20 +2680,25 @@ async markContributionPaid(
     contributionId: string,
     userId: string,
   ) {
-    const contribution =
-      await this.prisma.qurbanSavingContribution.findFirst({
-        where: {
-          id:
-            contributionId.trim(),
+    const cleanSavingId = savingId.trim();
+    const cleanContributionId = contributionId.trim();
 
-          savingPlanId:
-            savingId.trim(),
+    const contribution =
+      await this.prisma.qurbanSavingContribution.findUnique({
+        where: {
+          id: cleanContributionId,
         },
       });
 
     if (!contribution) {
       throw new NotFoundException(
         'Qurban saving contribution not found',
+      );
+    }
+
+    if (contribution.savingPlanId !== cleanSavingId) {
+      throw new ConflictException(
+        `Contribution ${cleanContributionId} does not belong to saving plan ${cleanSavingId}`,
       );
     }
 
@@ -2757,17 +2760,25 @@ async markContributionPaid(
     dto: CreateQurbanPaymentDto,
     userId: string,
   ) {
+    const cleanSavingId = savingId.trim();
+    const cleanContributionId = contributionId.trim();
+
     const contribution =
-      await this.prisma.qurbanSavingContribution.findFirst({
+      await this.prisma.qurbanSavingContribution.findUnique({
         where: {
-          id: contributionId.trim(),
-          savingPlanId: savingId.trim(),
+          id: cleanContributionId,
         },
       });
 
     if (!contribution) {
       throw new NotFoundException(
         'Qurban saving contribution not found',
+      );
+    }
+
+    if (contribution.savingPlanId !== cleanSavingId) {
+      throw new ConflictException(
+        `Contribution ${cleanContributionId} does not belong to saving plan ${cleanSavingId}`,
       );
     }
 
