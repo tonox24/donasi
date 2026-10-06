@@ -31,6 +31,7 @@ import { CreateQurbanDistributionDto } from './dto/create-qurban-distribution.dt
 import { CreateQurbanDistributionBeneficiaryDto } from './dto/create-qurban-distribution-beneficiary.dto';
 import { UpdateQurbanDistributionStatusDto } from './dto/update-qurban-distribution-status.dto';
 
+
 @Controller('qurban')
 export class QurbanController {
   constructor(
@@ -500,6 +501,18 @@ export class QurbanController {
     );
   }
 }
+
+  // =========================================================
+  // QURBAN DISTRIBUTION REPORT
+  // =========================================================
+
+  @Get('distributions/:id/report')
+  @Permissions('qurban.view')
+  getDistributionReport(
+    @Param('id') id: string,
+  ) {
+    return this.qurbanService.getDistributionReport(id);
+  }
 
   // =========================================================
   // QURBAN DISTRIBUTION REPORT
