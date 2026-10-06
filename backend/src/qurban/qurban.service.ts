@@ -29,6 +29,7 @@ import { CreateQurbanOrderDto } from './dto/create-qurban-order.dto';
 import { CreateQurbanDistributionDto } from './dto/create-qurban-distribution.dto';
 import { CreateQurbanDistributionBeneficiaryDto } from './dto/create-qurban-distribution-beneficiary.dto';
 import { UpdateQurbanDistributionStatusDto } from './dto/update-qurban-distribution-status.dto';
+import PDFDocument from 'pdfkit';
 
 @Injectable()
 export class QurbanService {
@@ -3650,6 +3651,340 @@ async markContributionPaid(
     return distribution;
   }
   
+  // =========================================================
+  // EXPORT QURBAN DISTRIBUTION REPORT TO PDF
+  // =========================================================
+
+  async generateDistributionReportPdf(
+    id: string,
+  ): Promise<Buffer> {
+    const report = await this.getDistributionReport(id);
+
+    const doc = new PDFDocument({
+      size: 'A4',
+      margins: {
+        top: 45,
+        bottom: 45,
+        left: 48,
+        right: 48,
+      },
+      info: {
+        Title: 'Laporan Distribusi Qurban',
+        Author: 'Islamic Relief Indonesia',
+        Subject: 'Qurban Distribution Report',
+      },
+    });
+
+    const chunks: Buffer[] = [];
+
+    return new Promise<Buffer>((resolve, reject) => {
+      doc.on('data', (chunk: Buffer) => {
+        chunks.push(Buffer.from(chunk));
+      });
+
+      doc.on('end', () => {
+        resolve(Buffer.concat(chunks));
+      });
+
+      doc.on('error', reject);
+
+      const formatDate = (
+        value: Date | string | null | undefined,
+      ): string => {
+        if (!value) return '-';
+
+        const date = new Date(value);
+
+        if (Number.isNaN(date.getTime())) {
+          return '-';
+        }
+
+        return date.toLocaleString('id-ID', {
+          timeZone: 'Asia/Jakarta',
+          dateStyle: 'medium',
+          timeStyle: 'short',
+        });
+      };
+
+      const ensureSpace = (height = 22) => {
+        if (doc.y + height > doc.page.height - 55) {
+          doc.addPage();
+        }
+      };
+
+      const section = (title: string) => {
+        ensureSpace(35);
+
+        doc.moveDown(0.6);
+        doc
+          .font('Helvetica-Bold')
+          .fontSize(12)
+          .text(title);
+
+        doc
+          .moveTo(48, doc.y + 3)
+          .lineTo(doc.page.width - 48, doc.y + 3)
+          .strokeColor('#0778D4')
+          .stroke();
+
+        doc.moveDown(0.5);
+      };
+
+      const field = (
+        label: string,
+        value: unknown,
+      ) => {
+        ensureSpace(25);
+
+        const text =
+          value === null ||
+          value === undefined ||
+          value === ''
+            ? '-'
+            : String(value);
+
+        doc
+          .font('Helvetica-Bold')
+          .fontSize(9)
+          .text(`${label}: `, {
+            continued: true,
+          });
+
+        doc
+          .font('Helvetica')
+          .fontSize(9)
+          .text(text);
+      };
+
+      // HEADER
+      doc
+        .font('Helvetica-Bold')
+        .fontSize(18)
+        .fillColor('#0778D4')
+        .text('ISLAMIC RELIEF INDONESIA');
+
+      doc
+        .font('Helvetica-Bold')
+        .fontSize(14)
+        .fillColor('#222222')
+        .text('LAPORAN DISTRIBUSI QURBAN');
+
+      doc
+        .font('Helvetica')
+        .fontSize(9)
+        .fillColor('#666666')
+        .text(
+          `Tanggal cetak: ${formatDate(report.generatedAt)}`,
+        );
+
+      doc.moveDown(1);
+
+      // DISTRIBUTION DETAILS
+      section('1. INFORMASI DISTRIBUSI');
+
+      field(
+        'Nomor Distribusi',
+        report.distribution.distributionNumber,
+      );
+
+      field(
+        'Lokasi Distribusi',
+        report.distribution.location,
+      );
+
+      field(
+        'Tanggal Distribusi',
+        formatDate(
+          report.distribution.distributionDate,
+        ),
+      );
+
+      field(
+        'Status',
+        report.distribution.status,
+      );
+
+      field(
+        'Catatan',
+        report.distribution.notes,
+      );
+
+      // QURBAN ORDER
+      section('2. INFORMASI PESANAN QURBAN');
+
+      field(
+        'Nomor Pesanan',
+        report.qurbanOrder.orderNumber,
+      );
+
+      field(
+        'Tahun Qurban',
+        report.qurbanOrder.qurbanYear,
+      );
+
+      field(
+        'Nama Pekurban',
+        report.qurbanOrder.pekurbanName,
+      );
+
+      field(
+        'Nama Donor',
+        report.qurbanOrder.donorName,
+      );
+
+      field(
+        'Jenis Hewan',
+        report.qurbanOrder.animalType,
+      );
+
+      field(
+        'Jumlah Hewan',
+        report.qurbanOrder.quantity,
+      );
+
+      // SUMMARY
+      section('3. RINGKASAN DISTRIBUSI');
+
+      field(
+        'Total Paket Disiapkan',
+        report.summary.totalPackagesPrepared,
+      );
+
+      field(
+        'Total Paket Dialokasikan',
+        report.summary.totalPackagesAssigned,
+      );
+
+      field(
+        'Sisa Paket',
+        report.summary.remainingPackages,
+      );
+
+      field(
+        'Total Penerima Manfaat',
+        report.summary.totalBeneficiaries,
+      );
+
+      field(
+        'Penerima Sudah Menerima',
+        report.summary.receivedBeneficiaries,
+      );
+
+      field(
+        'Penerima Belum Menerima',
+        report.summary.pendingBeneficiaries,
+      );
+
+      field(
+        'Total Dokumentasi',
+        report.summary.totalDocumentation,
+      );
+
+      // ANIMALS
+      section('4. DAFTAR HEWAN QURBAN');
+
+      if (report.animals.length === 0) {
+        field('Data hewan', 'Belum tersedia');
+      }
+
+      report.animals.forEach((animal, index) => {
+        ensureSpace(55);
+
+        doc
+          .font('Helvetica-Bold')
+          .fontSize(9)
+          .text(`Hewan ${index + 1}`);
+
+        field('Kode Hewan', animal.animalCode);
+        field('Jenis Hewan', animal.animalType);
+        field('Status', animal.status);
+
+        doc.moveDown(0.4);
+      });
+
+      // BENEFICIARIES
+      section('5. DAFTAR PENERIMA MANFAAT');
+
+      if (report.beneficiaries.length === 0) {
+        field('Penerima manfaat', 'Belum tersedia');
+      }
+
+      report.beneficiaries.forEach((beneficiary, index) => {
+        ensureSpace(65);
+
+        doc
+          .font('Helvetica-Bold')
+          .fontSize(10)
+          .text(
+            `${index + 1}. ${beneficiary.name}`,
+          );
+
+        field('Jenis Penerima', beneficiary.type);
+        field('Lokasi', beneficiary.location);
+        field(
+          'Jumlah Paket',
+          beneficiary.packageQuantity,
+        );
+        field(
+          'Tanggal Penerimaan',
+          formatDate(beneficiary.receivedAt),
+        );
+        field('Catatan', beneficiary.notes);
+
+        doc.moveDown(0.5);
+      });
+
+      // DOCUMENTATION
+      section('6. DOKUMENTASI QURBAN');
+
+      if (report.documentation.length === 0) {
+        field('Dokumentasi', 'Belum tersedia');
+      }
+
+      report.documentation.forEach((item, index) => {
+        ensureSpace(75);
+
+        doc
+          .font('Helvetica-Bold')
+          .fontSize(10)
+          .text(
+            `${index + 1}. ${item.title || item.type}`,
+          );
+
+        field('Kategori', item.type);
+        field('Waktu Pengambilan', formatDate(item.takenAt));
+        field('Keterangan', item.caption);
+        field('URL Foto', item.fileUrl);
+
+        if (item.qurbanAnimal) {
+          field(
+            'Kode Hewan',
+            item.qurbanAnimal.animalCode,
+          );
+        }
+
+        doc.moveDown(0.5);
+      });
+
+      // REPORT FOOTER
+      ensureSpace(45);
+      doc.moveDown(1);
+
+      doc
+        .font('Helvetica')
+        .fontSize(8)
+        .fillColor('#666666')
+        .text(
+          'Dokumen ini dihasilkan secara otomatis oleh sistem Digital Philanthropy Ecosystem.',
+          {
+            align: 'center',
+          },
+        );
+
+      doc.end();
+    });
+  }
+
   // =========================================================
   // QURBAN DISTRIBUTION REPORT
   // =========================================================
