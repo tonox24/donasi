@@ -6,8 +6,10 @@ import {
   Param,
   Patch,
   Post,
+  Res,
   UseGuards,
 } from '@nestjs/common';
+
 import type { Response } from 'express';
 
 import { QurbanService } from './qurban.service';
