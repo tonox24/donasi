@@ -441,6 +441,22 @@ export class QurbanController {
   }
 
   // =========================================================
+  // QURBAN DISTRIBUTION - REPORT
+  // =========================================================
+
+  @UseGuards(
+    JwtAuthGuard,
+    PermissionsGuard,
+  )
+  @Permissions('qurban.view')
+  @Get('distributions/:id/report')
+  getDistributionReport(
+    @Param('id') id: string,
+  ) {
+    return this.qurbanService.getDistributionReport(id);
+  }
+
+  // =========================================================
   // QURBAN DISTRIBUTION - BENEFICIARY
   // =========================================================
 
