@@ -501,27 +501,3 @@ export class QurbanController {
     );
   }
 }
-
-  // =========================================================
-  // QURBAN DISTRIBUTION REPORT
-  // =========================================================
-
-  @Get('distributions/:id/report')
-  @Permissions('qurban.view')
-  getDistributionReport(
-    @Param('id') id: string,
-  ) {
-    return this.qurbanService.getDistributionReport(id);
-  }
-
-  // =========================================================
-  // QURBAN DISTRIBUTION REPORT
-  // =========================================================
-
-  @Get('distributions/:id/report')
-  @Permissions('qurban.view')
-  getDistributionReport(
-    @Param('id') id: string,
-  ) {
-    return this.qurbanService.getDistributionReport(id);
-  }
