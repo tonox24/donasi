@@ -1,456 +1,51 @@
+```typescript
 import {
   Body,
   Controller,
-  Delete,
   Get,
   Param,
-  Patch,
   Post,
   UseGuards,
 } from '@nestjs/common';
 
 import { QurbanService } from './qurban.service';
 
-import { CreateQurbanPackageDto } from './dto/create-qurban-package.dto';
-import { UpdateQurbanPackageDto } from './dto/update-qurban-package.dto';
-
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { PermissionsGuard } from '../rbac/permissions.guard';
+import { Permissions } from '../rbac/permissions.decorator';
 import { CurrentUser } from '../auth/current-user.decorator';
 
-import { Permissions } from '../rbac/permissions.decorator';
-import { PermissionsGuard } from '../rbac/permissions.guard';
-
-import { CreateQurbanSavingDto } from './dto/create-qurban-saving.dto';
-import { UpdateQurbanSavingDto } from './dto/update-qurban-saving.dto';
-import { CreateQurbanContributionDto } from './dto/create-qurban-contribution.dto';
-import { CreateQurbanPaymentDto } from './dto/create-qurban-payment.dto';
-import { CreateQurbanPriceAdjustmentDto } from './dto/create-qurban-price-adjustment.dto';
-import { CreateQurbanOrderDto } from './dto/create-qurban-order.dto';
-
-import { CreateQurbanDistributionDto } from './dto/create-qurban-distribution.dto';
-import { CreateQurbanDistributionBeneficiaryDto } from './dto/create-qurban-distribution-beneficiary.dto';
-import { UpdateQurbanDistributionStatusDto } from './dto/update-qurban-distribution-status.dto';
-
+import { QurbanDocumentationService } from './qurban-documentation.service';
+import { CreateQurbanDocumentationDto } from './dto/create-qurban-documentation.dto';
 
 @Controller('qurban')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class QurbanController {
   constructor(
     private readonly qurbanService: QurbanService,
+    private readonly documentationService: QurbanDocumentationService,
   ) {}
 
   // =========================================================
-  // PUBLIC - QURBAN PACKAGES
+  // QURBAN ORDER REPORT
+  // GET /api/qurban/orders/:orderId/report
   // =========================================================
 
-  @Get('packages')
-  findAllPackages() {
-    return this.qurbanService.findAllPackages();
-  }
-
-  @Get('packages/:id')
-  findOnePackage(
-    @Param('id') id: string,
-  ) {
-    return this.qurbanService.findOnePackage(id);
-  }
-
-  // =========================================================
-  // MANAGEMENT - QURBAN PACKAGES
-  // =========================================================
-
-  @UseGuards(
-    JwtAuthGuard,
-    PermissionsGuard,
-  )
-  @Permissions('qurban.manage')
-  @Post('packages')
-  createPackage(
-    @Body() dto: CreateQurbanPackageDto,
-    @CurrentUser() user: { id: string },
-  ) {
-    return this.qurbanService.createPackage(
-      dto,
-      user.id,
-    );
-  }
-
-  @UseGuards(
-    JwtAuthGuard,
-    PermissionsGuard,
-  )
-  @Permissions('qurban.manage')
-  @Patch('packages/:id')
-  updatePackage(
-    @Param('id') id: string,
-    @Body() dto: UpdateQurbanPackageDto,
-    @CurrentUser() user: { id: string },
-  ) {
-    return this.qurbanService.updatePackage(
-      id,
-      dto,
-      user.id,
-    );
-  }
-
-  @UseGuards(
-    JwtAuthGuard,
-    PermissionsGuard,
-  )
-  @Permissions('qurban.manage')
-  @Delete('packages/:id')
-  deletePackage(
-    @Param('id') id: string,
-    @CurrentUser() user: { id: string },
-  ) {
-    return this.qurbanService.deletePackage(
-      id,
-      user.id,
-    );
-  }
-
-  // =========================================================
-  // QURBAN ORDER - CREATE
-  // =========================================================
-
-  @UseGuards(
-    JwtAuthGuard,
-    PermissionsGuard,
-  )
-  @Permissions('qurban.manage')
-  @Post('orders')
-  createOrder(
-    @Body() dto: CreateQurbanOrderDto,
-    @CurrentUser() user: { id: string },
-  ) {
-    return this.qurbanService.createOrder(
-      dto,
-      user.id,
-    );
-  }
-
-    // =========================================================
-  // QURBAN IMPACT REPORT
-  // =========================================================
-
-  @UseGuards(
-    JwtAuthGuard,
-    PermissionsGuard,
-  )
+  @Get('orders/:orderId/report')
   @Permissions('qurban.view')
-  @Get('orders/:id/report')
-  getQurbanReport(
-    @Param('id') id: string,
+  getOrderReport(
+    @Param('orderId') orderId: string,
   ) {
-    return this.qurbanService.getQurbanReport(id);
+    return this.qurbanService.getOrderReport(orderId);
   }
 
   // =========================================================
-  // TABUNGAN QURBAN - CREATE
+  // QURBAN DISTRIBUTION REPORT
+  // GET /api/qurban/distributions/:id/report
   // =========================================================
 
-  @UseGuards(
-    JwtAuthGuard,
-    PermissionsGuard,
-  )
-  @Permissions('qurban.manage')
-  @Post('savings')
-  createSaving(
-    @Body() dto: CreateQurbanSavingDto,
-    @CurrentUser() user: { id: string },
-  ) {
-    return this.qurbanService.createSaving(
-      dto,
-      user.id,
-    );
-  }
-
-  // =========================================================
-  // TABUNGAN QURBAN - LIST
-  // =========================================================
-
-  @UseGuards(
-    JwtAuthGuard,
-    PermissionsGuard,
-  )
-  @Permissions('qurban.view')
-  @Get('savings')
-  findAllSavings() {
-    return this.qurbanService.findAllSavings();
-  }
-
-  // =========================================================
-  // TABUNGAN QURBAN - PROGRESS
-  // =========================================================
-  //
-  // Must be declared before GET /savings/:id so that the
-  // literal "progress" path is handled explicitly.
-  // =========================================================
-
-  @UseGuards(
-    JwtAuthGuard,
-    PermissionsGuard,
-  )
-  @Permissions('qurban.view')
-  @Get('savings/:id/progress')
-  getSavingProgress(
-    @Param('id') id: string,
-  ) {
-    return this.qurbanService.getSavingProgress(id);
-  }
-
-  // =========================================================
-  // TABUNGAN QURBAN - CONTRIBUTIONS
-  // =========================================================
-
-  @UseGuards(
-    JwtAuthGuard,
-    PermissionsGuard,
-  )
-  @Permissions('qurban.view')
-  @Get('savings/:id/contributions')
-  findContributions(
-    @Param('id') id: string,
-  ) {
-    return this.qurbanService.findContributions(id);
-  }
-
-  @UseGuards(
-    JwtAuthGuard,
-    PermissionsGuard,
-  )
-  @Permissions('qurban.manage')
-  @Post('savings/:id/contributions')
-  createContribution(
-    @Param('id') id: string,
-    @Body() dto: CreateQurbanContributionDto,
-    @CurrentUser() user: { id: string },
-  ) {
-    return this.qurbanService.createContribution(
-      id,
-      dto,
-      user.id,
-    );
-  }
-
-  // =========================================================
-  // TABUNGAN QURBAN - CONTRIBUTION PAYMENT
-  // =========================================================
-
-  @UseGuards(
-    JwtAuthGuard,
-    PermissionsGuard,
-  )
-  @Permissions('qurban.manage')
-  @Post(
-    'savings/:id/contributions/:contributionId/payment',
-  )
-  createContributionPayment(
-    @Param('id') id: string,
-    @Param('contributionId') contributionId: string,
-    @Body() dto: CreateQurbanPaymentDto,
-    @CurrentUser() user: { id: string },
-  ) {
-    return this.qurbanService.createContributionPayment(
-      id,
-      contributionId,
-      dto,
-      user.id,
-    );
-  }
-
-  // =========================================================
-  // TABUNGAN QURBAN - PAYMENT RECONCILIATION
-  // =========================================================
-
-  @UseGuards(
-    JwtAuthGuard,
-    PermissionsGuard,
-  )
-  @Permissions('qurban.manage')
-  @Post(
-    'savings/:id/contributions/:contributionId/mark-paid',
-  )
-  markContributionPaid(
-    @Param('id') id: string,
-    @Param('contributionId') contributionId: string,
-    @CurrentUser() user: { id: string },
-  ) {
-    return this.qurbanService.markContributionPaid(
-      id,
-      contributionId,
-      user.id,
-    );
-  }
-
-  @UseGuards(
-    JwtAuthGuard,
-    PermissionsGuard,
-  )
-  @Permissions('qurban.manage')
-  @Post(
-    'savings/:id/contributions/:contributionId/mark-failed',
-  )
-  markContributionFailed(
-    @Param('id') id: string,
-    @Param('contributionId') contributionId: string,
-    @CurrentUser() user: { id: string },
-  ) {
-    return this.qurbanService.markContributionFailed(
-      id,
-      contributionId,
-      user.id,
-    );
-  }
-
-  // =========================================================
-  // TABUNGAN QURBAN - DETAIL
-  // =========================================================
-
-  @UseGuards(
-    JwtAuthGuard,
-    PermissionsGuard,
-  )
-  @Permissions('qurban.view')
-  @Get('savings/:id')
-  findOneSaving(
-    @Param('id') id: string,
-  ) {
-    return this.qurbanService.findOneSaving(id);
-  }
-
-  // =========================================================
-  // TABUNGAN QURBAN - UPDATE
-  // =========================================================
-
-  @UseGuards(
-    JwtAuthGuard,
-    PermissionsGuard,
-  )
-  @Permissions('qurban.manage')
-  @Patch('savings/:id')
-  updateSaving(
-    @Param('id') id: string,
-    @Body() dto: UpdateQurbanSavingDto,
-    @CurrentUser() user: { id: string },
-  ) {
-    return this.qurbanService.updateSaving(
-      id,
-      dto,
-      user.id,
-    );
-  }
-
-  // =========================================================
-  // QURBAN PRICE ADJUSTMENT
-  // =========================================================
-  //
-  // Example:
-  // Estimated price : Rp4.000.000
-  // Final price     : Rp4.800.000
-  // Difference      : Rp800.000
-  // Shortfall       : Rp800.000
-  //
-  // Existing contributions are NOT modified.
-  // =========================================================
-
-  @UseGuards(
-    JwtAuthGuard,
-    PermissionsGuard,
-  )
-  @Permissions('qurban.manage')
-  @Post('savings/:id/price-adjustment')
-  createPriceAdjustment(
-    @Param('id') id: string,
-    @Body() dto: CreateQurbanPriceAdjustmentDto,
-    @CurrentUser() user: { id: string },
-  ) {
-    return this.qurbanService.createPriceAdjustment(
-      id,
-      dto,
-      user.id,
-    );
-  }
-
-  // =========================================================
-  // QURBAN PRICE LOCK
-  // =========================================================
-
-  @UseGuards(
-    JwtAuthGuard,
-    PermissionsGuard,
-  )
-  @Permissions('qurban.manage')
-  @Post('savings/:id/price-lock')
-  lockPrice(
-    @Param('id') id: string,
-    @CurrentUser() user: { id: string },
-  ) {
-    return this.qurbanService.lockPrice(
-      id,
-      user.id,
-    );
-  }
-
-  // =========================================================
-  // QURBAN DISTRIBUTION - CREATE
-  // =========================================================
-
-  @UseGuards(
-    JwtAuthGuard,
-    PermissionsGuard,
-  )
-  @Permissions('qurban.manage')
-  @Post('distributions')
-  createDistribution(
-    @Body() dto: CreateQurbanDistributionDto,
-    @CurrentUser() user: { id: string },
-  ) {
-    return this.qurbanService.createDistribution(
-      dto,
-      user.id,
-    );
-  }
-
-  // =========================================================
-  // QURBAN DISTRIBUTION - LIST
-  // =========================================================
-
-  @UseGuards(
-    JwtAuthGuard,
-    PermissionsGuard,
-  )
-  @Permissions('qurban.view')
-  @Get('distributions')
-  findAllDistributions() {
-    return this.qurbanService.findAllDistributions();
-  }
-
-  // =========================================================
-  // QURBAN DISTRIBUTION - DETAIL
-  // =========================================================
-
-  @UseGuards(
-    JwtAuthGuard,
-    PermissionsGuard,
-  )
-  @Permissions('qurban.view')
-  @Get('distributions/:id')
-  findOneDistribution(
-    @Param('id') id: string,
-  ) {
-    return this.qurbanService.findOneDistribution(id);
-  }
-
-  // =========================================================
-  // QURBAN DISTRIBUTION - REPORT
-  // =========================================================
-
-  @UseGuards(
-    JwtAuthGuard,
-    PermissionsGuard,
-  )
-  @Permissions('qurban.view')
   @Get('distributions/:id/report')
+  @Permissions('qurban.view')
   getDistributionReport(
     @Param('id') id: string,
   ) {
@@ -458,46 +53,48 @@ export class QurbanController {
   }
 
   // =========================================================
-  // QURBAN DISTRIBUTION - BENEFICIARY
+  // CREATE ANIMAL DOCUMENTATION
+  // POST /api/qurban/animals/:animalId/documentations
   // =========================================================
 
-  @UseGuards(
-    JwtAuthGuard,
-    PermissionsGuard,
-  )
+  @Post('animals/:animalId/documentations')
   @Permissions('qurban.manage')
-  @Post('distributions/:id/beneficiaries')
-  addDistributionBeneficiary(
-    @Param('id') id: string,
-    @Body() dto: CreateQurbanDistributionBeneficiaryDto,
+  createAnimalDocumentation(
+    @Param('animalId') animalId: string,
+    @Body() dto: CreateQurbanDocumentationDto,
     @CurrentUser() user: { id: string },
   ) {
-    return this.qurbanService.addDistributionBeneficiary(
-      id,
+    return this.documentationService.create(
+      animalId,
       dto,
       user.id,
     );
   }
 
   // =========================================================
-  // QURBAN DISTRIBUTION - STATUS
+  // GET DOCUMENTATION BY ANIMAL
+  // GET /api/qurban/animals/:animalId/documentations
   // =========================================================
 
-  @UseGuards(
-    JwtAuthGuard,
-    PermissionsGuard,
-  )
-  @Permissions('qurban.manage')
-  @Post('distributions/:id/status')
-  updateDistributionStatus(
-    @Param('id') id: string,
-    @Body() dto: UpdateQurbanDistributionStatusDto,
-    @CurrentUser() user: { id: string },
+  @Get('animals/:animalId/documentations')
+  @Permissions('qurban.view')
+  getAnimalDocumentations(
+    @Param('animalId') animalId: string,
   ) {
-    return this.qurbanService.updateDistributionStatus(
-      id,
-      dto,
-      user.id,
-    );
+    return this.documentationService.findByAnimal(animalId);
+  }
+
+  // =========================================================
+  // GET DOCUMENTATION DETAIL
+  // GET /api/qurban/documentations/:id
+  // =========================================================
+
+  @Get('documentations/:id')
+  @Permissions('qurban.view')
+  getDocumentationDetail(
+    @Param('id') id: string,
+  ) {
+    return this.documentationService.findOne(id);
   }
 }
+```
