@@ -18,7 +18,7 @@ export class CreateQurbanAnimalDto {
   qurbanOrderId?: string;
 
   @IsEnum(QurbanAnimalType)
-  animalType: QurbanAnimalType;
+  animalType!: QurbanAnimalType;
 
   @IsOptional()
   @IsString()
