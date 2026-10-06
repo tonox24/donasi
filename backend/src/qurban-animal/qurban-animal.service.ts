@@ -1,15 +1,17 @@
+
 import {
   BadRequestException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 
-import { PrismaService } from '../prisma/prisma.service';
-
 import {
   QurbanAnimalStatus,
   QurbanAnimalType,
+  Prisma,
 } from '@prisma/client';
+
+import { PrismaService } from '../prisma.service';
 
 import { CreateQurbanAnimalDto } from './dto/create-qurban-animal.dto';
 import { UpdateQurbanAnimalDto } from './dto/update-qurban-animal.dto';
@@ -21,10 +23,6 @@ export class QurbanAnimalService {
     private readonly prisma: PrismaService,
   ) {}
 
-  // ==========================================
-  // GENERATE ANIMAL CODE
-  // ==========================================
-
   private async generateAnimalCode(
     animalType: QurbanAnimalType,
   ): Promise<string> {
@@ -33,96 +31,73 @@ export class QurbanAnimalService {
     const prefix =
       animalType === QurbanAnimalType.COW
         ? 'COW'
-        : 'GOA';
+        : animalType === QurbanAnimalType.SHEEP
+          ? 'SHE'
+          : 'GOA';
 
-    const count =
-      await this.prisma.qurbanAnimal.count({
-        where: {
-          animalType,
-          registrationDate: {
-            gte: new Date(`${year}-01-01`),
-            lt: new Date(`${year + 1}-01-01`),
-          },
+    const count = await this.prisma.qurbanAnimal.count({
+      where: {
+        animalType,
+        createdAt: {
+          gte: new Date(`${year}-01-01T00:00:00.000Z`),
+          lt: new Date(`${year + 1}-01-01T00:00:00.000Z`),
         },
-      });
+      },
+    });
 
-    const sequence = String(
-      count + 1,
-    ).padStart(4, '0');
-
-    return `QBN-${year}-${prefix}-${sequence}`;
+    return `QBN-${year}-${prefix}-${String(count + 1).padStart(4, '0')}`;
   }
-
-  // ==========================================
-  // CREATE
-  // ==========================================
 
   async create(
     dto: CreateQurbanAnimalDto,
+    createdById: string,
   ) {
-    const animalCode =
-      await this.generateAnimalCode(
-        dto.animalType,
+    if (!createdById) {
+      throw new BadRequestException(
+        'Authenticated user ID is required',
       );
+    }
 
-    const animal =
-      await this.prisma.qurbanAnimal.create({
-        data: {
-          animalCode,
+    const order = await this.prisma.qurbanOrder.findUnique({
+      where: {
+        id: dto.qurbanOrderId,
+      },
+    });
 
-          qurbanOrderId:
-            dto.qurbanOrderId,
+    if (!order) {
+      throw new NotFoundException(
+        'Qurban order not found',
+      );
+    }
 
-          animalType:
-            dto.animalType,
+    const animalCode = await this.generateAnimalCode(
+      dto.animalType,
+    );
 
-          breed:
-            dto.breed,
-
-          gender:
-            dto.gender,
-
-          ageMonths:
-            dto.ageMonths,
-
-          weight:
-            dto.weight,
-
-          origin:
-            dto.origin,
-
-          supplier:
-            dto.supplier,
-
-          purchasePrice:
-            dto.purchasePrice,
-
-          distributionLocation:
-            dto.distributionLocation,
-
-          notes:
-            dto.notes,
-
-          status:
-            QurbanAnimalStatus.REGISTERED,
-        },
-      });
+    const animal = await this.prisma.qurbanAnimal.create({
+      data: {
+        animalCode,
+        qurbanOrderId: dto.qurbanOrderId,
+        animalType: dto.animalType,
+        ageMonths: dto.ageMonths,
+        weightKg: dto.weightKg,
+        sex: dto.sex,
+        healthStatus: dto.healthStatus,
+        location: dto.location,
+        notes: dto.notes,
+        createdById,
+        status: QurbanAnimalStatus.REGISTERED,
+      },
+    });
 
     return {
       success: true,
-      message:
-        'Qurban animal registered successfully',
+      message: 'Qurban animal registered successfully',
       data: animal,
     };
   }
 
-  // ==========================================
-  // FIND ALL
-  // ==========================================
-
-  async findAll(
-    query: QueryQurbanAnimalDto,
-  ) {
+  async findAll(query: QueryQurbanAnimalDto) {
     const {
       status,
       animalType,
@@ -130,42 +105,46 @@ export class QurbanAnimalService {
       search,
     } = query;
 
-    const animals =
-      await this.prisma.qurbanAnimal.findMany({
-        where: {
-          status,
-          animalType,
+    const animals = await this.prisma.qurbanAnimal.findMany({
+      where: {
+        status,
+        animalType,
 
-          distributionLocation:
-            location
-              ? {
-                  contains: location,
+        location: location
+          ? {
+              contains: location,
+              mode: 'insensitive',
+            }
+          : undefined,
+
+        OR: search
+          ? [
+              {
+                animalCode: {
+                  contains: search,
                   mode: 'insensitive',
-                }
-              : undefined,
-
-          OR: search
-            ? [
-                {
-                  animalCode: {
-                    contains: search,
-                    mode: 'insensitive',
-                  },
                 },
-                {
-                  supplier: {
-                    contains: search,
-                    mode: 'insensitive',
-                  },
+              },
+              {
+                location: {
+                  contains: search,
+                  mode: 'insensitive',
                 },
-              ]
-            : undefined,
-        },
+              },
+              {
+                healthStatus: {
+                  contains: search,
+                  mode: 'insensitive',
+                },
+              },
+            ]
+          : undefined,
+      },
 
-        orderBy: {
-          createdAt: 'desc',
-        },
-      });
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
 
     return {
       success: true,
@@ -173,20 +152,16 @@ export class QurbanAnimalService {
     };
   }
 
-  // ==========================================
-  // FIND ONE
-  // ==========================================
-
   async findOne(id: string) {
-    const animal =
-      await this.prisma.qurbanAnimal.findUnique({
-        where: {
-          id,
-        },
-        include: {
-          qurbanOrder: true,
-        },
-      });
+    const animal = await this.prisma.qurbanAnimal.findUnique({
+      where: {
+        id,
+      },
+      include: {
+        qurbanOrder: true,
+        documentations: true,
+      },
+    });
 
     if (!animal) {
       throw new NotFoundException(
@@ -200,94 +175,97 @@ export class QurbanAnimalService {
     };
   }
 
-  // ==========================================
-  // UPDATE
-  // ==========================================
-
   async update(
-  id: string,
-  dto: UpdateQurbanAnimalDto,
-) {
-  const animal =
-    await this.prisma.qurbanAnimal.findUnique({
-      where: {
-        id,
-      },
-    });
-
-  if (!animal) {
-    throw new NotFoundException(
-      'Qurban animal not found',
-    );
-  }
-
-  const lockedStatuses = [
-    QurbanAnimalStatus.SLAUGHTERED,
-    QurbanAnimalStatus.PROCESSED,
-    QurbanAnimalStatus.DISTRIBUTED,
-  ];
-
-  if (
-    lockedStatuses.includes(animal.status)
+    id: string,
+    dto: UpdateQurbanAnimalDto,
   ) {
-    throw new BadRequestException(
-      'Animal can no longer be edited at this stage',
-    );
-  }
-
-  const updated =
-    await this.prisma.qurbanAnimal.update({
+    const animal = await this.prisma.qurbanAnimal.findUnique({
       where: {
         id,
       },
-
-      data: {
-        qurbanOrderId:
-          dto.qurbanOrderId,
-
-        animalType:
-          dto.animalType,
-
-        breed:
-          dto.breed,
-
-        gender:
-          dto.gender,
-
-        ageMonths:
-          dto.ageMonths,
-
-        weight:
-          dto.weight,
-
-        origin:
-          dto.origin,
-
-        supplier:
-          dto.supplier,
-
-        purchasePrice:
-          dto.purchasePrice,
-
-        distributionLocation:
-          dto.distributionLocation,
-
-        notes:
-          dto.notes,
-      },
     });
 
-  return {
-    success: true,
-    message:
-      'Qurban animal updated successfully',
-    data: updated,
-  };
-}
+    if (!animal) {
+      throw new NotFoundException(
+        'Qurban animal not found',
+      );
+    }
+
+    const lockedStatuses: QurbanAnimalStatus[] = [
+      QurbanAnimalStatus.SLAUGHTERED,
+      QurbanAnimalStatus.PROCESSED,
+      QurbanAnimalStatus.DISTRIBUTED,
+      QurbanAnimalStatus.CANCELLED,
+    ];
+
+    if (lockedStatuses.includes(animal.status)) {
+      throw new BadRequestException(
+        'Animal can no longer be edited at this stage',
+      );
+    }
+
+    if (dto.qurbanOrderId) {
+      const order = await this.prisma.qurbanOrder.findUnique({
+        where: {
+          id: dto.qurbanOrderId,
+        },
+      });
+
+      if (!order) {
+        throw new NotFoundException(
+          'Qurban order not found',
+        );
+      }
+    }
+
+    const data: Prisma.QurbanAnimalUpdateInput = {
+      ...(dto.qurbanOrderId !== undefined && {
+        qurbanOrder: {
+          connect: {
+            id: dto.qurbanOrderId,
+          },
+        },
+      }),
+
+      ...(dto.animalType !== undefined && {
+        animalType: dto.animalType,
+      }),
+
+      ...(dto.ageMonths !== undefined && {
+        ageMonths: dto.ageMonths,
+      }),
+
+      ...(dto.weightKg !== undefined && {
+        weightKg: dto.weightKg,
+      }),
+
+      ...(dto.sex !== undefined && {
+        sex: dto.sex,
+      }),
+
+      ...(dto.healthStatus !== undefined && {
+        healthStatus: dto.healthStatus,
+      }),
+
+      ...(dto.location !== undefined && {
+        location: dto.location,
+      }),
+
+      ...(dto.notes !== undefined && {
+        notes: dto.notes,
+      }),
+    };
+
+    const updated = await this.prisma.qurbanAnimal.update({
+      where: {
+        id,
+      },
+      data,
+    });
+
     return {
       success: true,
-      message:
-        'Qurban animal updated successfully',
+      message: 'Qurban animal updated successfully',
       data: updated,
     };
   }
