@@ -3649,6 +3649,141 @@ async markContributionPaid(
 
     return distribution;
   }
+  
+  // =========================================================
+  // QURBAN DISTRIBUTION REPORT
+  // =========================================================
+
+  async getDistributionReport(id: string) {
+    // 1. Retrieve distribution details
+    const distribution =
+      await this.findOneDistribution(id);
+
+    // 2. Retrieve Qurban documentation for this order
+    const documentation =
+      await this.prisma.qurbanDocumentation.findMany({
+        where: {
+          qurbanOrderId: distribution.qurbanOrderId,
+        },
+        orderBy: [
+          {
+            type: 'asc',
+          },
+          {
+            takenAt: 'asc',
+          },
+          {
+            createdAt: 'asc',
+          },
+        ],
+        include: {
+          qurbanAnimal: {
+            select: {
+              id: true,
+              animalCode: true,
+              animalType: true,
+              status: true,
+            },
+          },
+          createdBy: {
+            select: {
+              id: true,
+              fullName: true,
+            },
+          },
+        },
+      });
+
+    // 3. Calculate distribution statistics
+    const beneficiaries = distribution.beneficiaries;
+
+    const totalBeneficiaries = beneficiaries.length;
+
+    const receivedBeneficiaries =
+      beneficiaries.filter(
+        (item) => item.receivedAt !== null,
+      ).length;
+
+    const pendingBeneficiaries =
+      totalBeneficiaries - receivedBeneficiaries;
+
+    const totalPackagesAssigned =
+      beneficiaries.reduce(
+        (total, item) =>
+          total + item.packageQuantity,
+        0,
+      );
+
+    const totalPackagesPrepared =
+      distribution.packageQuantity;
+
+    // 4. Build report
+    return {
+      success: true,
+
+      reportType: 'QURBAN_DISTRIBUTION_REPORT',
+
+      generatedAt: new Date(),
+
+      distribution: {
+        id: distribution.id,
+        distributionNumber:
+          distribution.distributionNumber,
+        location: distribution.location,
+        distributionDate:
+          distribution.distributionDate,
+        status: distribution.status,
+        notes: distribution.notes,
+      },
+
+      qurbanOrder: {
+        id: distribution.qurbanOrder.id,
+        orderNumber:
+          distribution.qurbanOrder.orderNumber,
+        qurbanYear:
+          distribution.qurbanOrder.qurbanYear,
+        pekurbanName:
+          distribution.qurbanOrder.pekurbanName,
+        donorName:
+          distribution.qurbanOrder.donorName,
+        animalType:
+          distribution.qurbanOrder.animalType,
+        quantity:
+          distribution.qurbanOrder.quantity,
+      },
+
+      summary: {
+        totalPackagesPrepared,
+        totalPackagesAssigned,
+        remainingPackages: Math.max(
+          0,
+          totalPackagesPrepared - totalPackagesAssigned,
+        ),
+        totalBeneficiaries,
+        receivedBeneficiaries,
+        pendingBeneficiaries,
+        totalDocumentation: documentation.length,
+      },
+
+      animals: distribution.qurbanOrder.animals,
+
+      beneficiaries: beneficiaries.map((item) => ({
+        id: item.id,
+        beneficiaryId: item.beneficiaryId,
+        name: item.beneficiary.name,
+        type: item.beneficiary.type,
+        location: item.beneficiary.location,
+        packageQuantity: item.packageQuantity,
+        receivedAt: item.receivedAt,
+        notes: item.notes,
+      })),
+
+      documentation,
+
+      generatedBy: distribution.createdBy,
+    };
+  }
+
   // =========================================================
   // ADD DISTRIBUTION BENEFICIARY
   // =========================================================
