@@ -1,5 +1,7 @@
+
 import {
   IsEnum,
+  IsInt,
   IsNumber,
   IsOptional,
   IsString,
@@ -7,10 +9,7 @@ import {
   Min,
 } from 'class-validator';
 
-import {
-  QurbanAnimalGender,
-  QurbanAnimalType,
-} from '@prisma/client';
+import { QurbanAnimalType } from '@prisma/client';
 
 export class UpdateQurbanAnimalDto {
   @IsOptional()
@@ -22,39 +21,26 @@ export class UpdateQurbanAnimalDto {
   animalType?: QurbanAnimalType;
 
   @IsOptional()
-  @IsString()
-  breed?: string;
-
-  @IsOptional()
-  @IsEnum(QurbanAnimalGender)
-  gender?: QurbanAnimalGender;
-
-  @IsOptional()
-  @IsNumber()
+  @IsInt()
   @Min(1)
   ageMonths?: number;
 
   @IsOptional()
   @IsNumber()
   @Min(0)
-  weight?: number;
+  weightKg?: number;
 
   @IsOptional()
   @IsString()
-  origin?: string;
+  sex?: string;
 
   @IsOptional()
   @IsString()
-  supplier?: string;
-
-  @IsOptional()
-  @IsNumber()
-  @Min(0)
-  purchasePrice?: number;
+  healthStatus?: string;
 
   @IsOptional()
   @IsString()
-  distributionLocation?: string;
+  location?: string;
 
   @IsOptional()
   @IsString()
