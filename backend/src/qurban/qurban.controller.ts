@@ -8,6 +8,7 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
+import type { Response } from 'express';
 
 import { QurbanService } from './qurban.service';
 
@@ -439,6 +440,43 @@ export class QurbanController {
     @Param('id') id: string,
   ) {
     return this.qurbanService.findOneDistribution(id);
+  }
+
+  // =========================================================
+  // QURBAN DISTRIBUTION - EXPORT PDF
+  // =========================================================
+
+  @UseGuards(
+    JwtAuthGuard,
+    PermissionsGuard,
+  )
+  @Permissions('qurban.view')
+  @Get('distributions/:id/report/pdf')
+  async downloadDistributionReportPdf(
+    @Param('id') id: string,
+    @Res() res: Response,
+  ) {
+    const pdf =
+      await this.qurbanService.generateDistributionReportPdf(
+        id,
+      );
+
+    res.setHeader(
+      'Content-Type',
+      'application/pdf',
+    );
+
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="laporan-distribusi-qurban-${id}.pdf"`,
+    );
+
+    res.setHeader(
+      'Content-Length',
+      pdf.length,
+    );
+
+    return res.status(200).send(pdf);
   }
 
   // =========================================================
