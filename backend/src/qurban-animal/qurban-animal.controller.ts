@@ -15,6 +15,8 @@ import { QurbanAnimalService } from './qurban-animal.service';
 import { CreateQurbanAnimalDto } from './dto/create-qurban-animal.dto';
 import { UpdateQurbanAnimalDto } from './dto/update-qurban-animal.dto';
 import { QueryQurbanAnimalDto } from './dto/query-qurban-animal.dto';
+import { UpdateQurbanAnimalStatusDto } from './dto/update-qurban-animal-status.dto';
+
 
 interface AuthenticatedRequest {
   user?: {
@@ -64,4 +66,16 @@ export class QurbanAnimalController {
   ) {
     return this.qurbanAnimalService.update(id, dto);
   }
+  
+@Post(':id/status')
+updateStatus(
+  @Param('id') id: string,
+  @Body() dto: UpdateQurbanAnimalStatusDto,
+) {
+  return this.qurbanAnimalService.updateStatus(
+    id,
+    dto.status,
+  );
+}
+
 }
