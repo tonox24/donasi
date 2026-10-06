@@ -269,4 +269,82 @@ export class QurbanAnimalService {
       data: updated,
     };
   }
+  
+async updateStatus(
+  id: string,
+  status: QurbanAnimalStatus,
+) {
+  const animal = await this.prisma.qurbanAnimal.findUnique({
+    where: { id },
+  });
+
+  if (!animal) {
+    throw new NotFoundException('Qurban animal not found');
+  }
+
+  const allowedTransitions: Record<
+    QurbanAnimalStatus,
+    QurbanAnimalStatus[]
+  > = {
+    REGISTERED: [
+      QurbanAnimalStatus.VERIFIED,
+      QurbanAnimalStatus.CANCELLED,
+    ],
+    VERIFIED: [
+      QurbanAnimalStatus.SLAUGHTERED,
+      QurbanAnimalStatus.CANCELLED,
+    ],
+    SLAUGHTERED: [
+      QurbanAnimalStatus.PROCESSED,
+    ],
+    PROCESSED: [
+      QurbanAnimalStatus.DISTRIBUTED,
+    ],
+    DISTRIBUTED: [],
+    CANCELLED: [],
+  };
+
+  if (!allowedTransitions[animal.status].includes(status)) {
+    throw new BadRequestException(
+      `Invalid status transition: ${animal.status} -> ${status}`,
+    );
+  }
+
+  const now = new Date();
+
+  const timestampFields: Partial<
+    Record<QurbanAnimalStatus, Date>
+  > = {
+    VERIFIED: now,
+    SLAUGHTERED: now,
+    PROCESSED: now,
+    DISTRIBUTED: now,
+  };
+
+  const updated = await this.prisma.qurbanAnimal.update({
+    where: { id },
+    data: {
+      status,
+      ...(timestampFields[status] && status === QurbanAnimalStatus.VERIFIED
+        ? { verifiedAt: now }
+        : {}),
+      ...(timestampFields[status] && status === QurbanAnimalStatus.SLAUGHTERED
+        ? { slaughteredAt: now }
+        : {}),
+      ...(timestampFields[status] && status === QurbanAnimalStatus.PROCESSED
+        ? { processedAt: now }
+        : {}),
+      ...(timestampFields[status] && status === QurbanAnimalStatus.DISTRIBUTED
+        ? { distributedAt: now }
+        : {}),
+    },
+  });
+
+  return {
+    success: true,
+    message: `Qurban animal status updated to ${status}`,
+    data: updated,
+  };
+}
+
 }
