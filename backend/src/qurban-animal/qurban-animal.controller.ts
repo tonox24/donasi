@@ -1,3 +1,4 @@
+
 import {
   Body,
   Controller,
@@ -6,6 +7,7 @@ import {
   Patch,
   Post,
   Query,
+  Req,
 } from '@nestjs/common';
 
 import { QurbanAnimalService } from './qurban-animal.service';
@@ -13,6 +15,13 @@ import { QurbanAnimalService } from './qurban-animal.service';
 import { CreateQurbanAnimalDto } from './dto/create-qurban-animal.dto';
 import { UpdateQurbanAnimalDto } from './dto/update-qurban-animal.dto';
 import { QueryQurbanAnimalDto } from './dto/query-qurban-animal.dto';
+
+interface AuthenticatedRequest {
+  user?: {
+    id?: string;
+    sub?: string;
+  };
+}
 
 @Controller('qurban/animals')
 export class QurbanAnimalController {
@@ -23,8 +32,15 @@ export class QurbanAnimalController {
   @Post()
   create(
     @Body() dto: CreateQurbanAnimalDto,
+    @Req() req: AuthenticatedRequest,
   ) {
-    return this.qurbanAnimalService.create(dto);
+    const createdById =
+      req.user?.id ?? req.user?.sub;
+
+    return this.qurbanAnimalService.create(
+      dto,
+      createdById ?? '',
+    );
   }
 
   @Get()
